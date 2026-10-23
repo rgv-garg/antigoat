@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+results/*.jsonl
+results/*.meta.json
+!results/demo-*.jsonl
+!results/demo-*.meta.json
+nano_v3_reasoning_parser.py
+.venv/
+venv/

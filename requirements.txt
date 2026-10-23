@@ -1,0 +1,11 @@
+openai>=1.40
+numpy>=1.26
+scipy>=1.11
+pandas>=2.1
+plotly>=5.20
+streamlit>=1.40
+python-dotenv>=1.0
+requests>=2.31
+fastapi>=0.110
+uvicorn>=0.29
+pytest>=8.0

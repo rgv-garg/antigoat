@@ -1,0 +1,73 @@
+"""All settings in one place. Values come from .env (see .env.example).
+
+Nothing else in the repo should read os.environ directly - import SETTINGS instead.
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:  # dotenv is optional
+    pass
+
+
+def _f(name: str, default: str) -> str:
+    return os.environ.get(name, default)
+
+
+@dataclass
+class LLMRole:
+    """Settings for one LLM 'role' (Sahayak or attacker)."""
+
+    base_url: str
+    api_key: str
+    model: str
+    temperature: float
+    max_tokens: int
+    thinking: bool  # Nemotron reasoning mode on/off
+
+
+@dataclass
+class Settings:
+    # --- LLM endpoints. "mock" = offline fake LLM (no GPU, no key) for testing the plumbing.
+    sahayak: LLMRole = field(
+        default_factory=lambda: LLMRole(
+            base_url=_f("SAHAYAK_BASE_URL", _f("LLM_BASE_URL", "mock")),
+            api_key=_f("SAHAYAK_API_KEY", _f("LLM_API_KEY", "not-needed")),
+            model=_f("SAHAYAK_MODEL", _f("LLM_MODEL", "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16")),
+            temperature=float(_f("SAHAYAK_TEMPERATURE", "0")),
+            max_tokens=int(_f("SAHAYAK_MAX_TOKENS", "512")),
+            thinking=_f("SAHAYAK_THINKING", "false").lower() == "true",
+        )
+    )
+    attacker: LLMRole = field(
+        default_factory=lambda: LLMRole(
+            base_url=_f("ATTACKER_BASE_URL", _f("LLM_BASE_URL", "mock")),
+            api_key=_f("ATTACKER_API_KEY", _f("LLM_API_KEY", "not-needed")),
+            model=_f("ATTACKER_MODEL", _f("LLM_MODEL", "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16")),
+            temperature=float(_f("ATTACKER_TEMPERATURE", "0.7")),
+            max_tokens=int(_f("ATTACKER_MAX_TOKENS", "1024")),
+            thinking=_f("ATTACKER_THINKING", "true").lower() == "true",
+        )
+    )
+
+    # --- Embeddings: "hash" = built-in, no download (fine for testing). "BAAI/bge-m3" for real runs.
+    embed_model: str = _f("EMBED_MODEL", "hash")
+
+    # --- Sarvam voice (demo only)
+    sarvam_api_key: str = _f("SARVAM_API_KEY", "")
+    sarvam_stt_model: str = _f("SARVAM_STT_MODEL", "saaras:v4")
+    sarvam_tts_model: str = _f("SARVAM_TTS_MODEL", "bulbul:v4-flash")
+    sarvam_speaker: str = _f("SARVAM_SPEAKER", "simran_en_customer")
+
+    # --- Runner
+    max_workers: int = int(_f("MAX_WORKERS", "16"))  # parallel LLM requests
+    request_timeout: float = float(_f("REQUEST_TIMEOUT", "120"))
+    summary_mode: str = _f("SUMMARY_MODE", "concat")  # concat | llm
+
+
+SETTINGS = Settings()

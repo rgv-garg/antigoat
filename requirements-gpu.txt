@@ -1,0 +1,4 @@
+# Only on the Brev GPU machine
+vllm
+sentence-transformers>=3.0
+huggingface_hub[cli]
