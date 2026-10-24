@@ -144,3 +144,20 @@ def test_empty_thinking_answer_is_retried_without_thinking():
         llm._cfg = orig
     assert calls == [True, False]
     assert llm.parse_json(out, want="guess")["guess"] == "B"
+
+
+def test_blast_radius_r0_off_vs_on():
+    from antigoat.blast import measure_r0
+    off = measure_r0("off", n_citizens=12)
+    on = measure_r0("on", n_citizens=12)
+    assert off.r0 >= 10 and off.patient_zero_approved          # one poison waves the centre through
+    assert on.r0 == 0 and not on.patient_zero_approved          # authority table + walls contain it
+
+
+def test_fake_consensus_only_source_counting_resists():
+    from antigoat.consensus import run_comparison
+    res = {r.defence: r for r in run_comparison(k_forged_copies=10)}
+    assert res["off"].fooled_by_forgery
+    assert res["naive_consensus"].fooled_by_forgery              # A-MemGuard style, beaten by FARMA
+    assert not res["source_counting"].fooled_by_forgery          # ours resists
+    assert all(r.accepts_genuine for r in res.values())          # none of them block real updates

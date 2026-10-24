@@ -111,6 +111,22 @@ buffer and its `history` log (`store.residue(needle)` → `{messages_table: 1, h
 buffer is sent back to the extraction LLM on the next `add()`. The Deletion rule measures whether that ever
 brings the fact back through the agent. With Memory Checks ON both are purged (`{0, 0}`); see `tests/test_core.py`.
 
+## Bonus analyses (run_extras.py)
+Two headline metrics beyond the twin-world scorecard. Both are deterministic, so the numbers
+are reproducible on stage. Run: `python run_extras.py --tag demo` (writes `results/extras-*.json`).
+
+**Memory R0 (blast radius, `antigoat/blast.py`, idea #6).** One malicious citizen uploads ONE
+poisoned notice at a shared enrolment-centre pincode. We count how many OTHER citizens are then
+wrongly approved without address proof. Checks OFF -> R0 ~= all of them; Checks ON -> R0 = 0.
+"One poison infects the whole centre, or none."
+
+**Fake consensus (`antigoat/consensus.py`, idea #1, "ten copies != ten witnesses").** A scammer
+forwards one forged waiver as K copies (a viral WhatsApp forward). We compare three defences on
+the same attack: `off` (fooled), `naive_consensus` (A-MemGuard style: trusts >=2 agreeing copies,
+beaten by the FARMA attack), and `source_counting` (ours: counts distinct origins, so 10 copies of
+one forward = 1 witness). Only ours resists the forgery AND still accepts 2 genuinely independent
+sources, proving it isn't just blocking everything.
+
 ## Brev runbook (A100, Crusoe, instance `antigoat`)
 ```bash
 brev start antigoat && brev shell antigoat
