@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AntiGOAT findings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="goat">🐐</span> AntiGOAT <small>· twin-world audit of agent memory</small></div>
+  <div class="spacer"></div>
+  <a class="toplink" href="/">← Talk to Sahayak</a>
+</div>
+
+<div class="rwrap">
+  <div class="runbar">
+    <span class="label" style="margin:0">Run</span>
+    <select id="run"></select>
+    <span id="meta" class="mini"></span>
+  </div>
+  <div class="tiles" id="tiles"></div>
+  <div id="cards"></div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="sheet">
+    <div class="hd">
+      <strong id="mTitle">Replay</strong>
+      <span id="mSub" class="mini"></span>
+      <button class="x" id="mClose">✕</button>
+    </div>
+    <div class="slots" id="mSlots"></div>
+    <div class="body" id="mBody"></div>
+  </div>
+</div>
+
+<script src="/static/report.js"></script>
+</body>
+</html>

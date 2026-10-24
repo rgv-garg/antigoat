@@ -53,6 +53,39 @@ What the mock run already shows:
 | Poisoning | ✖ LEAK | ✔ PASS | ✔ PASS |
 | Authority (must learn) | ✔ PASS | ✔ PASS | ▲ NO-LEARN |
 
+## Finals additions (v2)
+**Memory Checks v2 — nine sub-checks, each individually toggleable.** `authority`, `walls`,
+`action_gate`, `hard_delete`, `source_count` (ten copies ≠ ten witnesses), `lineage_trust`
+(a summary inherits its least-trusted parent), `slow_poison` (one origin can't drip many
+claims at one decision), `hash_chain` (tamper-evident write log) and `quarantine` (a command
+written as a "fact" is never actionable). Run the full defence with one check removed:
+`MemoryChecks.from_spec("on:-walls")`, or on the CLI `--checks on,on:-walls`.
+
+**Which check stops which leak** (deterministic, instant, no GPU):
+```bash
+python run_ablation.py --tag full      # turn off one check -> the matching leak returns
+```
+
+**Mem0 deletion-at-rest, quantified** (white-box, inside Mem0's own tables):
+```bash
+python run_mem0_probe.py --n 30 --tag full
+```
+
+**Autonomous detect → patch → re-verify loop** (future-scaling demo):
+```bash
+python run_advisor.py                  # AntiGOAT finds a leak, enables the right check, re-checks
+```
+
+**Web app** — a real Sahayak chat (voice + spoken "forget" + live memory panel) and an
+AntiGOAT findings page where each leak replays the attacker's actual conversation:
+```bash
+bash scripts/serve_web.sh              # http://localhost:8100  (add port 8100 on Brev)
+```
+
+**One-command overnight** (inside tmux): `bash scripts/overnight.sh` runs the headline sweep,
+calibration, Mem0, the Mem0 probe, ablation, R0/consensus and the advisor, logging to
+`results/overnight.log`.
+
 ## Repo map: who owns what
 | Path | What | Owner |
 |---|---|---|

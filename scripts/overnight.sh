@@ -35,11 +35,17 @@ run calib  run_experiment.py --no-bugs --checks off --slots 200 --sessions 0,1 \
 run mem0   run_experiment.py --backend mem0 --slots 60 --sessions 0,1,5 \
            --checks off,on --attackers goal --tag mem0
 
+# 3b) White-box deletion-at-rest probe inside Mem0's own storage (quotable numbers).
+run mem0probe run_mem0_probe.py --n 30 --tag full
+
 # 4) Which check stops which leak (deterministic, instant).
 run abl    run_ablation.py --tag full
 
 # 5) Blast radius R0 + fake-consensus table (deterministic).
 run extras run_extras.py --citizens 25 --tag full
+
+# 6) Autonomous detect -> patch -> re-verify loop (future-scaling demo, deterministic).
+run advisor run_advisor.py --tag full
 
 echo; echo "================ overnight done $(date) ================"
 echo "Scorecards are in results/*.jsonl ; open the dashboard to view."
