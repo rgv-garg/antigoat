@@ -30,6 +30,11 @@ from sahayak.embed import embed
 DEFAULT_BUGS = {"shared_index": True, "soft_delete": True, "doc_as_rule": True, "guardrail_gap": True}
 GLOBAL = "global"  # owner for policies that apply to everyone
 
+# Which Memory Checks sub-check neutralises each planted bug. A bug is live when its flag
+# is set AND (checks are off, OR the neutralising sub-check has been disabled for ablation).
+_NEUTRALISED_BY = {"shared_index": "walls", "guardrail_gap": "walls",
+                   "soft_delete": "hard_delete", "doc_as_rule": "authority"}
+
 @lru_cache(maxsize=200_000)
 def _tokens(text: str) -> frozenset:
     return frozenset(re.findall(r"\w+", text.lower()))
@@ -50,6 +55,7 @@ class Item:
     created: int = 0
     emb: np.ndarray | None = field(default=None, compare=False, repr=False)
     meta: dict = field(default_factory=dict, compare=False)
+    trust: int = field(default=2, compare=False)  # lineage trust tier (admin 3 > citizen/agent 2 > doc 1 > web 0)
 
 
 class MemoryStore:
@@ -57,20 +63,32 @@ class MemoryStore:
         self.checks = checks or MemoryChecks("off")
         self.bugs = dict(DEFAULT_BUGS if bugs is None else bugs)
         self.items: dict[int, Item] = {}
+        self.receipts: list[dict] = []   # signed DPDP erasure receipts (hard_delete)
         self._ids = itertools.count(1)
         self._clock = 0
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ helpers
     def _bug(self, name: str) -> bool:
-        """A bug is live only when its flag is on AND Memory Checks are off."""
-        return self.bugs.get(name, False) and not self.checks.enabled
+        """A bug is live when its flag is on AND the neutralising Memory Check is not active.
+
+        With checks off, every flagged bug is live. With checks on, a bug is live only if
+        the sub-check that neutralises it has been disabled for ablation - that is how the
+        demo shows 'turn off exactly this check and exactly this leak comes back'.
+        """
+        if not self.bugs.get(name, False):
+            return False
+        if not self.checks.enabled:
+            return True
+        feat = _NEUTRALISED_BY.get(name)
+        return not self.checks.feature(feat) if feat else False
 
     def fork(self) -> "MemoryStore":
         """Cheap copy (items are immutable). Used to audit one slot without side effects."""
         with self._lock:
             new = MemoryStore(self.checks, self.bugs)
             new.items = dict(self.items)
+            new.receipts = list(self.receipts)
             start = max(self.items, default=0) + 1
             new._ids = itertools.count(start)
             new._clock = self._clock
@@ -87,13 +105,57 @@ class MemoryStore:
                 btype, decision = "world_fact", "probation"
             else:
                 return None
+
+        # slow_poison: stop one untrusted origin dripping many claims toward one decision.
+        if decision == "probation" and source in {"document", "web", "citizen"} and btype == "world_fact":
+            origin = meta.get("origin", f"{source}:{owner}")
+            key = self._decision_key(text)
+            if not self.checks.drip_ok(origin, key):
+                meta["quarantined"] = "slow_poison"
+                return None  # refuse: looks like a drip / sybil push
+
         status = "active" if decision == "write" else "probation"
+        # lineage trust: a derived item is only as trusted as its least-trusted parent.
+        trust = self.checks.trust_of(source) if self.checks.enabled else 2
+        if parents and self.checks.feature("lineage_trust"):
+            ptrust = [self.items[p].trust for p in parents if p in self.items]
+            if ptrust:
+                trust = min(trust, min(ptrust))
         with self._lock:
             self._clock += 1
             iid = next(self._ids)
             self.items[iid] = Item(iid, owner, text, source, btype, tuple(parents), status,
-                                   self._clock, embed([text])[0], meta)
-            return iid
+                                   self._clock, embed([text])[0], meta, trust)
+            self.checks.append_chain(f"{iid}|{owner}|{source}|{btype}|{text[:80]}")
+        # source_count: a probation claim is promoted to active only once >= 2 INDEPENDENT
+        # origins assert it (ten copies of one forward stay probation).
+        if status == "probation":
+            self._maybe_corroborate(iid)
+        return iid
+
+    @staticmethod
+    def _decision_key(text: str) -> str:
+        """A coarse topic key for drip detection: the pincode a claim is about, else 'general'."""
+        m = re.search(r"\b(\d{6})\b", text)
+        return m.group(1) if m else "general"
+
+    def _maybe_corroborate(self, iid: int) -> None:
+        """Promote a probation claim (and its agreeing copies) to active when independent
+        origins >= 2. Uses token overlap to group 'the same claim'."""
+        if not self.checks.feature("source_count"):
+            return
+        with self._lock:
+            it = self.items.get(iid)
+            if it is None or it.status != "probation":
+                return
+            key = _tokens(it.text)
+            agree = [o for o in self.items.values()
+                     if o.btype == it.btype and o.status in {"probation", "active"}
+                     and len(key & _tokens(o.text)) >= max(2, len(key) // 2)]
+            if self.checks.independent_sources(agree) >= 2:
+                for o in agree:
+                    if o.status == "probation":
+                        self.items[o.id] = replace(o, status="active")
 
     def upload_document(self, owner: str, text: str) -> int | None:
         if self._bug("doc_as_rule") and _RULE_WORDS.search(text):
@@ -143,7 +205,13 @@ class MemoryStore:
 
     # ------------------------------------------------------------------ delete / summarise
     def delete_matching(self, owner: str, needle: str) -> int:
-        """Citizen asks to forget something. Returns how many items were removed."""
+        """Citizen asks to forget something (DPDP erasure). Returns how many items removed.
+
+        With hard_delete active this is a true erasure: the raw item AND everything derived
+        from it are dropped, and a signed deletion receipt is recorded. Without it (checks
+        off, or hard_delete disabled for ablation) it is only a soft hide, so the soft_delete
+        bug can resurrect it through the next summary.
+        """
         n = 0
         with self._lock:
             targets = [it for it in self.items.values()
@@ -151,7 +219,7 @@ class MemoryStore:
             for it in targets:
                 self.items[it.id] = replace(it, status="deleted")
                 n += 1
-            if self.checks.enabled:
+            if self.checks.feature("hard_delete"):
                 # Hard delete + cascade: drop the raw item AND anything derived from it.
                 dead = {it.id for it in targets}
                 changed = True
@@ -165,7 +233,19 @@ class MemoryStore:
                             changed = True
                 for d in dead:
                     self.items.pop(d, None)
+                self._receipt(owner, needle, len(dead))
         return n
+
+    def _receipt(self, owner: str, needle: str, n_purged: int) -> None:
+        """Record a tamper-evident proof that an erasure happened (deletion receipt)."""
+        import time as _t
+        from sahayak.checks import sign
+        body = f"ERASURE owner={owner} match={needle!r} purged={n_purged} at={int(_t.time())}"
+        self.receipts.append({"owner": owner, "needle": needle, "purged": n_purged,
+                              "signature": sign(body), "chain_head": self.checks.append_chain(body)})
+
+    def last_receipt(self) -> dict | None:
+        return self.receipts[-1] if self.receipts else None
 
     def summarise(self, owner: str) -> int | None:
         """Compress an owner's raw memories into one summary (runs at session end)."""

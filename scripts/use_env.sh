@@ -22,7 +22,7 @@ MAX_WORKERS=4" ;;
 LLM_API_KEY=not-needed
 LLM_MODEL=nemotron-nano
 EMBED_MODEL=BAAI/bge-m3
-MAX_WORKERS=32" ;;
+MAX_WORKERS=96" ;;
   mock)
     block="LLM_BASE_URL=mock
 EMBED_MODEL=hash

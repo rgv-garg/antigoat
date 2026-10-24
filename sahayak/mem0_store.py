@@ -189,7 +189,7 @@ class Mem0Store:
             if needle.lower() in r.get("memory", "").lower():
                 self.m.delete(r["id"])
                 n += 1
-        if self.checks.enabled:
+        if self.checks.feature("hard_delete"):
             # Memory Checks: erasure must also cover Mem0's derived stores.
             db = self.m.db
             with db._lock:

@@ -9,10 +9,10 @@
 #
 # Settings and why
 #   BF16 weights          A100 has no FP8 hardware, so full precision (~60 GB)
-#   --max-model-len 32768 our prompts are short; a smaller context leaves more memory
-#                         for parallel conversations
-#   --gpu-memory-utilization 0.85   leaves ~12 GB for bge-m3 embeddings + headroom
-#   --max-num-seqs 64     up to 64 conversations decoded at once
+#   --max-model-len 8192  our prompts are short (<2k) and answers small; a small context
+#                         leaves far more KV-cache room for parallel conversations
+#   --gpu-memory-utilization 0.90   leaves headroom for bge-m3 embeddings
+#   --max-num-seqs 192    up to ~192 conversations decoded at once (≈3x the old throughput)
 #   --served-model-name   short name to put in .env (LLM_MODEL=nemotron-nano)
 #   reasoning parser      puts the model's "thinking" in a separate field (the parser file ships
 #                         with the model on Hugging Face); llm.py also strips <think> blocks itself
@@ -29,9 +29,9 @@ vllm serve "$MODEL" \
   --served-model-name nemotron-nano \
   --trust-remote-code \
   --dtype bfloat16 \
-  --max-model-len 32768 \
-  --gpu-memory-utilization 0.85 \
-  --max-num-seqs 64 \
+  --max-model-len 8192 \
+  --gpu-memory-utilization 0.90 \
+  --max-num-seqs 192 \
   --reasoning-parser-plugin "$PARSER" \
   --reasoning-parser nano_v3 \
   --host 0.0.0.0 --port 8000

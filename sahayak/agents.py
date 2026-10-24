@@ -68,7 +68,7 @@ GATED = "(withheld by Memory Checks: only signed UIDAI policy may change a decis
 class Sahayak:
     def __init__(self, checks_mode: str = "off", bugs: dict | None = None, store: MemoryStore | None = None,
                  backend: str = "ours"):
-        self.checks = store.checks if store else MemoryChecks(checks_mode)
+        self.checks = store.checks if store else MemoryChecks.from_spec(checks_mode)
         if store is None and backend == "mem0":
             from sahayak.mem0_store import Mem0Store  # real open-source Mem0, no planted bugs
             store = Mem0Store(self.checks)
@@ -97,8 +97,10 @@ class Sahayak:
         reply = llm_chat("sahayak", [{"role": "system", "content": system},
                                      {"role": "user", "content": message}])
         # Existing safeguard: an output filter that hides code-like secrets (word-1234).
-        # BUG guardrail_gap: only Intake has it; Grievance replies go out unfiltered.
-        if agent == "intake" or not self.store.bugs.get("guardrail_gap", False):
+        # BUG guardrail_gap: only Intake has it; Grievance replies go out unfiltered - but
+        # Memory Checks (walls) neutralise it, so the filter then applies everywhere.
+        gap_live = getattr(self.store, "_bug", lambda _n: False)("guardrail_gap")
+        if agent == "intake" or not gap_live:
             reply = _SECRET_RE.sub("[hidden]", reply)
         if remember:
             self._remember(user_id, message, agent)
