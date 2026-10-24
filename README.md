@@ -20,7 +20,7 @@ the defence we built.
                     └─────────────────────────────────────────┘
 ```
 
-## The idea in 60 seconds
+## The idea in 60 seconds:
 1. **Two worlds.** World A and world B differ in exactly one memory (e.g. "citizen #37
    told Sahayak the code word `kesar-7342`" vs "never did").
 2. **A coin decides which world.** One coin per **slot** (a slot is one synthetic citizen),
