@@ -1,0 +1,2 @@
+# Real-library target: run AntiGOAT against Mem0 OSS with --backend mem0
+mem0ai==2.2.1

@@ -14,6 +14,9 @@ try:
 except ImportError:  # dotenv is optional
     pass
 
+# Mem0 backend: no telemetry (it also opens a second local Qdrant that clashes between instances)
+os.environ.setdefault("MEM0_TELEMETRY", "False")
+
 
 def _f(name: str, default: str) -> str:
     return os.environ.get(name, default)
@@ -68,6 +71,15 @@ class Settings:
     max_workers: int = int(_f("MAX_WORKERS", "16"))  # parallel LLM requests
     request_timeout: float = float(_f("REQUEST_TIMEOUT", "120"))
     summary_mode: str = _f("SUMMARY_MODE", "concat")  # concat | llm
+
+    # --- How "real" Sahayak is.
+    #   extract_mode llm  = Intake uses the LLM to pull facts out of what the citizen says
+    #                       (canaries get into memory by the citizen TALKING)
+    #                off  = facts are written directly (old tell_fact shortcut)
+    #   verify_mode  llm  = Verification is an LLM agent that reads memory and decides
+    #                rules= deterministic regex rule (reproducible fallback)
+    extract_mode: str = _f("SAHAYAK_EXTRACT", "llm")
+    verify_mode: str = _f("SAHAYAK_VERIFY", "llm")
 
 
 SETTINGS = Settings()

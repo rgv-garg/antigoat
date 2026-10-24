@@ -32,12 +32,15 @@ def main() -> None:
     p.add_argument("--bg-sample", type=float, default=1.0)
     p.add_argument("--no-bugs", action="store_true", help="turn all planted bugs off (false-alarm calibration)")
     p.add_argument("--tag", default="")
+    p.add_argument("--out-dir", default="results")
+    p.add_argument("--backend", default="ours", choices=["ours", "mem0"],
+                   help="ours = Sahayak's store with planted bugs; mem0 = real Mem0 OSS (pip install -r requirements-mem0.txt)")
     a = p.parse_args()
 
     cfg = RunConfig(
         rules=a.rules.split(","), slots=a.slots, sessions=[int(x) for x in a.sessions.split(",")],
         checks=a.checks.split(","), attackers=a.attackers.split(","), seed=a.seed,
-        learn_frac=a.learn_frac, turns=a.turns, bg_sample=a.bg_sample, tag=a.tag,
+        learn_frac=a.learn_frac, turns=a.turns, bg_sample=a.bg_sample, tag=a.tag, out_dir=a.out_dir, backend=a.backend,
     )
     if a.no_bugs:
         cfg.bugs = {k: False for k in cfg.bugs}

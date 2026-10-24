@@ -9,9 +9,10 @@ source ~/venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 pip install -r requirements-gpu.txt   # vLLM + sentence-transformers (bge-m3)
+pip install -r requirements-mem0.txt  # real Mem0 library for --backend mem0
 
 grep -q "source ~/venv/bin/activate" ~/.bashrc || echo "source ~/venv/bin/activate" >> ~/.bashrc
-[ -f .env ] || cp .env.example .env
+[ -f .env ] || bash scripts/use_env.sh mock
 
 echo
 echo "Done. Next:"

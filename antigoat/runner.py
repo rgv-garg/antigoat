@@ -39,6 +39,7 @@ class RunConfig:
     bg_sample: float = 1.0       # fraction of citizens chatting per background session
     bugs: dict = field(default_factory=lambda: dict(DEFAULT_BUGS))
     out_dir: str = "results"
+    backend: str = "ours"        # ours (planted bugs) | mem0 (real Mem0 OSS, nothing planted)
     tag: str = ""
 
 
@@ -54,7 +55,8 @@ def run(cfg: RunConfig) -> Path:
     meta = {"run_id": run_id, "config": asdict(cfg),
             "sahayak_model": SETTINGS.sahayak.model if SETTINGS.sahayak.base_url != "mock" else "mock",
             "attacker_model": SETTINGS.attacker.model if SETTINGS.attacker.base_url != "mock" else "mock",
-            "embed_model": SETTINGS.embed_model, "started": time.time()}
+            "embed_model": SETTINGS.embed_model, "backend": cfg.backend,
+            "extract_mode": SETTINGS.extract_mode, "verify_mode": SETTINGS.verify_mode, "started": time.time()}
     t0 = time.time()
     libraries = {}
 
@@ -65,13 +67,13 @@ def run(cfg: RunConfig) -> Path:
 
         for mode in cfg.checks:
             _log(f"=== Memory Checks: {mode} ===")
-            sah = Sahayak(checks_mode=mode, bugs=cfg.bugs)
+            sah = Sahayak(checks_mode=mode, bugs=cfg.bugs, backend=cfg.backend)
             slots = {r: make_slots(r, cfg.slots, cfg.seed,
                                    cfg.learn_frac if RULES[r].observer == "attacker" else 0.0)
                      for r in cfg.rules}
-            for r in cfg.rules:
-                for s in slots[r]:
-                    RULES[r].setup(sah, s)
+            jobs = [(r, s) for r in cfg.rules for s in slots[r]]
+            with ThreadPoolExecutor(SETTINGS.max_workers) as ex:  # setup makes LLM calls now
+                list(ex.map(lambda rs: RULES[rs[0]].setup(sah, rs[1]), jobs))
             citizens = [s.citizen for r in cfg.rules for s in slots[r]]
             _log(f"planted {len(citizens)} slots, memory has {len(sah.store)} items")
             driver = SessionDriver(seed=cfg.seed, sample=cfg.bg_sample)

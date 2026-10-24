@@ -91,6 +91,25 @@ Memory Checks ON neutralises all of them **without** turning the flags off. That
 - **Fixed-list baseline** (garak-style) to compare against. Real **NVIDIA garak** can also attack
   Sahayak through `serve_sahayak.py`'s `/v1/chat/completions`.
 
+## Sahayak is model-driven (not scripted)
+- **Intake extracts facts with the LLM** (`SAHAYAK_EXTRACT=llm`). Canaries enter memory because a citizen
+  *says* them in chat and the model decides to remember them, as in Mem0/LangMem.
+- **Verification is an LLM agent** (`SAHAYAK_VERIFY=llm`). It reads the policies plus the applicant's memory.
+  Poisoning succeeds only if the *model* believes the fake notice. With Memory Checks ON, the action gate
+  withholds untrusted memory from the decision. Use `SAHAYAK_VERIFY=rules` for a deterministic verifier.
+
+## Real-library target: Mem0 (no planted bugs)
+```bash
+pip install -r requirements-mem0.txt
+python run_experiment.py --backend mem0 --slots 40 --sessions 0,1,5 --checks off,on --tag mem0
+```
+`sahayak/mem0_store.py` puts Sahayak on **Mem0 OSS v2.2.1** exactly as shipped. Mem0 does its own LLM extraction,
+bridged to our client, so it runs on NIM, Brev or the mock. Memory Checks can be layered on top.
+**Verified finding (data at rest):** after `Memory.delete()`, the deleted text is still in Mem0's `messages`
+buffer and its `history` log (`store.residue(needle)` → `{messages_table: 1, history_table: 1}`). The message
+buffer is sent back to the extraction LLM on the next `add()`. The Deletion rule measures whether that ever
+brings the fact back through the agent. With Memory Checks ON both are purged (`{0, 0}`); see `tests/test_core.py`.
+
 ## Brev runbook (A100, Crusoe, instance `antigoat`)
 ```bash
 brev start antigoat && brev shell antigoat

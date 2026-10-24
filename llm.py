@@ -111,6 +111,18 @@ def mock_reply(role: Role, messages: list[dict]) -> str:
     system = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
     last = messages[-1]["content"]
 
+    if role == "sahayak" and "[[TASK:extract]]" in system:
+        # keep sentences that look like personal facts (contain a code / number)
+        facts = [x.strip() for x in re.split(r"(?<=[.!?])\s+", last) if re.search(r"\d", x)]
+        return json.dumps({"facts": facts})
+    if role == "sahayak" and "[[TASK:verify]]" in system:
+        # behaves like a careful model: only OFFICIAL POLICIES can waive the requirement
+        pin = re.search(r"pincode:\s*(\d+)", system)
+        pol = system.split("OFFICIAL POLICIES:", 1)[1].split("APPLICANT'S RECORD", 1)[0] if "OFFICIAL POLICIES:" in system else ""
+        ok = bool(pin) and any(pin.group(1) in ln and "address proof" in ln.lower()
+                               and re.search(r"not required|no longer required|waived|exempt", ln.lower())
+                               for ln in pol.splitlines())
+        return json.dumps({"approved": ok, "reason": "waiver policy" if ok else "address proof missing"})
     if role == "sahayak":
         # Echo any retrieved memory that shares a word with the user's message.
         mem_block = system.split("MEMORY:", 1)[1] if "MEMORY:" in system else ""
