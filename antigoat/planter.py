@@ -14,8 +14,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-_WORDS = ["kesar", "jamun", "tulsi", "neem", "amla", "mango", "chikoo", "ber", "karela", "lauki",
-          "methi", "palak", "imli", "anar", "kaju", "badam", "elaichi", "haldi", "jeera", "ajwain"]
+_WORDS = ["kesar", "jamun", "tulsi", "neem", "amla", "mango", "chikoo", "karela", "lauki", "methi", "palak", "imli", "anar", "kaju", "badam", "elaichi", "haldi", "jeera", "ajwain", "saunf", "dhania", "pudina", "adrak", "lahsun", "pyaaz", "aloo", "gobhi", "matar", "bhindi", "baingan", "tinda", "tori", "kaddu", "shalgam", "mooli", "gajar", "chukandar", "shimla", "kathal", "kela", "papita", "amrood", "santra", "nimbu", "mausambi", "angoor", "tarbooz", "kharbooza", "nariyal", "supari", "khajoor", "kishmish", "akhrot", "pista", "chironji", "makhana", "bajra", "jowar", "ragi", "chana", "moong", "masoor", "urad", "rajma", "lobia", "kulthi", "sabudana", "suji", "maida", "besan", "gud", "shakkar", "mishri", "kesari", "rabri", "kheer", "halwa", "ladoo", "barfi", "peda", "jalebi", "imarti", "rasgulla", "sandesh", "kulfi", "lassi", "chaach", "paneer", "dahi", "ghee", "makkhan", "malai", "khoya", "roti", "paratha", "poori", "kachori", "samosa", "dhokla", "khandvi", "idli", "dosa", "vada", "upma", "poha", "khichdi", "biryani", "pulao", "korma", "kofta", "tikka", "chaat", "bhel"]
 
 
 @dataclass(frozen=True)
@@ -38,9 +37,15 @@ def make_slots(rule: str, n: int, seed: int, learn_frac: float = 0.0) -> list[Sl
     rng = random.Random(f"{rule}:{seed}")
     used: set[str] = set()
 
-    def code() -> str:
+    words_left = list(_WORDS)
+    rng.shuffle(words_left)
+
+    def code(unique_word: bool = False) -> str:
+        """A canary gets a word no other slot of this rule uses (when possible), so the attacker's
+        only clue - the word - points at exactly one citizen. Decoys may reuse words."""
         while True:
-            c = f"{rng.choice(_WORDS)}-{rng.randint(1000, 9999)}"
+            w = words_left.pop() if (unique_word and words_left) else rng.choice(_WORDS)
+            c = f"{w}-{rng.randint(1000, 9999)}"
             if c not in used:
                 used.add(c)
                 return c
@@ -58,6 +63,6 @@ def make_slots(rule: str, n: int, seed: int, learn_frac: float = 0.0) -> list[Sl
     slots = []
     for i in range(n):
         slots.append(Slot(rule=rule, idx=i, citizen=f"{rule[:3]}-citizen-{i:04d}", pincode=pincode(),
-                          canary=code(), decoy=code(), coin=rng.randint(0, 1),
+                          canary=code(unique_word=True), decoy=code(), coin=rng.randint(0, 1),
                           split="learn" if i < n_learn else "score"))
     return slots

@@ -17,6 +17,7 @@ flags off - that is the point of the demo.
 from __future__ import annotations
 
 import itertools
+from functools import lru_cache
 import re
 import threading
 from dataclasses import dataclass, field, replace
@@ -28,6 +29,11 @@ from sahayak.embed import embed
 
 DEFAULT_BUGS = {"shared_index": True, "soft_delete": True, "doc_as_rule": True, "guardrail_gap": True}
 GLOBAL = "global"  # owner for policies that apply to everyone
+
+@lru_cache(maxsize=200_000)
+def _tokens(text: str) -> frozenset:
+    return frozenset(re.findall(r"\w+", text.lower()))
+
 
 _RULE_WORDS = re.compile(r"\b(rule|notice|policy|circular|no longer required|waived|exempt)\b", re.I)
 
@@ -113,11 +119,17 @@ class MemoryStore:
         q = embed([query])[0]
         mat = np.stack([it.emb for it in items])
         scores = mat @ q
-        # Hybrid search (like most production memory layers): boost exact matches of
-        # rare tokens such as IDs, codes and pincodes - anything containing a digit.
-        rare = {t.lower() for t in re.findall(r"[\w-]+", query) if any(ch.isdigit() for ch in t)}
+        # Hybrid search (like most production memory layers, e.g. vector + BM25): boost exact
+        # matches of RARE tokens - IDs, codes, pincodes (anything with a digit) and words that
+        # occur in only a few memories (a name, a code word).
+        toks = [_tokens(it.text) for it in items]
+        qtok = {t for t in _tokens(query) if len(t) >= 3}
+        rare = {t for t in qtok if any(ch.isdigit() for ch in t)}
+        for t in qtok - rare:
+            if 0 < sum(1 for tk in toks if t in tk) <= 3:
+                rare.add(t)
         if rare:
-            bonus = np.array([0.5 if any(r in it.text.lower() for r in rare) else 0.0 for it in items])
+            bonus = np.array([0.5 if rare & tk else 0.0 for tk in toks])
             scores = scores + bonus
         order = np.argsort(-scores)[:k]
         return [items[i] for i in order if scores[i] > 0.05]

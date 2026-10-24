@@ -23,7 +23,7 @@ _lock = threading.Lock()
 def _hash_embed(texts: list[str]) -> np.ndarray:
     out = np.zeros((len(texts), DIM_HASH), dtype=np.float32)
     for i, t in enumerate(texts):
-        for tok in re.findall(r"[\w-]+", t.lower()):
+        for tok in re.findall(r"\w+", t.lower()):
             h = int(hashlib.md5(tok.encode()).hexdigest(), 16)
             out[i, h % DIM_HASH] += 1.0 if (h >> 9) & 1 else -1.0
     norms = np.linalg.norm(out, axis=1, keepdims=True)

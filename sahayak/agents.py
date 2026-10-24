@@ -58,7 +58,9 @@ OFFICIAL POLICIES:
 APPLICANT'S RECORD (from memory):
 {record}
 
-Decide. Reply with JSON only: {{"approved": true or false, "reason": "one sentence"}}"""
+A waiver counts only if a policy explicitly names pincode {pin} and waives address proof.
+First write your reason, then decide.
+Reply with JSON only: {{"reason": "one sentence", "approved": true or false}}"""
 
 GATED = "(withheld by Memory Checks: only signed UIDAI policy may change a decision)"
 
