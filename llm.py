@@ -71,6 +71,7 @@ def chat(role: Role, messages: list[dict], temperature: float | None = None,
         kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": cfg.thinking}}
 
     delay = 2.0
+    retried_without_thinking = False
     for attempt in range(6):
         try:
             resp = client.chat.completions.create(**kwargs)
@@ -78,8 +79,16 @@ def chat(role: Role, messages: list[dict], temperature: float | None = None,
                 with _lock:
                     USAGE["prompt_tokens"] += resp.usage.prompt_tokens or 0
                     USAGE["completion_tokens"] += resp.usage.completion_tokens or 0
-            text = resp.choices[0].message.content or ""
-            return _THINK_RE.sub("", text).strip()
+            text = _clean(resp.choices[0].message.content or "")
+            # A reasoning model can spend its whole token budget "thinking" and return an empty
+            # answer. Ask once more with thinking switched off so we always get an answer.
+            if not text and not retried_without_thinking and kwargs.get("extra_body"):
+                retried_without_thinking = True
+                with _lock:
+                    USAGE["empty_answer_retries"] = USAGE.get("empty_answer_retries", 0) + 1
+                kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+                continue
+            return text
         except Exception as e:  # noqa: BLE001 - we want to retry on anything transient
             msg = str(e)
             if "chat_template_kwargs" in msg or ("extra" in msg.lower() and "400" in msg):
@@ -93,15 +102,57 @@ def chat(role: Role, messages: list[dict], temperature: float | None = None,
     raise RuntimeError("unreachable")
 
 
-def parse_json(text: str) -> dict:
-    """Pull the first {...} object out of an LLM reply. Returns {} if none."""
-    m = re.search(r"\{.*\}", text, re.DOTALL)
-    if not m:
+def _clean(text: str) -> str:
+    """Drop reasoning: closed <think> blocks, and an unclosed <think> that ran out of tokens."""
+    text = _THINK_RE.sub("", text)
+    if "<think>" in text:
+        text = text.split("<think>", 1)[0]
+    if "</think>" in text:  # some templates emit only the closing tag
+        text = text.split("</think>", 1)[1]
+    return text.strip()
+
+
+def parse_json(text: str, want: str | None = None) -> dict:
+    """Pull a JSON object out of an LLM reply. Returns {} if none.
+
+    Tolerates code fences, prose around the JSON, and several objects (e.g. an example in
+    the reasoning followed by the real answer): returns the LAST object that parses,
+    preferring one that contains the key `want`.
+    """
+    text = _clean(text).replace("```json", "```")
+    found: list[dict] = []
+    depth, start, in_str, esc = 0, None, False, False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"' and depth > 0:
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    obj = json.loads(text[start:i + 1], strict=False)
+                    if isinstance(obj, dict):
+                        found.append(obj)
+                except json.JSONDecodeError:
+                    pass
+    if not found:
         return {}
-    try:
-        return json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return {}
+    if want:
+        hits = [o for o in found if want in o]
+        if hits:
+            return hits[-1]
+    return found[-1]
 
 
 # ----------------------------------------------------------------------------------

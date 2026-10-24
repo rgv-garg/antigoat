@@ -14,7 +14,7 @@ case "$mode" in
     [ -n "$key" ] || { echo "usage: bash scripts/use_env.sh hosted nvapi-XXXX"; exit 1; }
     block="LLM_BASE_URL=https://integrate.api.nvidia.com/v1
 LLM_API_KEY=$key
-LLM_MODEL=nvidia/nemotron-3-nano-30b-a3b
+LLM_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 EMBED_MODEL=hash
 MAX_WORKERS=4" ;;
   brev)
@@ -39,7 +39,7 @@ SAHAYAK_TEMPERATURE=0
 SAHAYAK_MAX_TOKENS=512
 SAHAYAK_THINKING=false
 ATTACKER_TEMPERATURE=0.7
-ATTACKER_MAX_TOKENS=1024
+ATTACKER_MAX_TOKENS=4096
 ATTACKER_THINKING=true
 REQUEST_TIMEOUT=120
 SARVAM_API_KEY=$sarvam

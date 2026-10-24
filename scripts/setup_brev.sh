@@ -8,8 +8,11 @@ python3 -m venv ~/venv
 source ~/venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-pip install -r requirements-gpu.txt   # vLLM + sentence-transformers (bge-m3)
+pip install sentence-transformers 'huggingface_hub[cli]'   # bge-m3 embeddings
 pip install -r requirements-mem0.txt  # real Mem0 library for --backend mem0
+
+# vLLM in its own venv, pinned to 0.12.0: the A100 driver (CUDA 12.7) cannot run the newest vLLM (CUDA 13)
+[ -d ~/vllm-env ] || { python3 -m venv ~/vllm-env && ~/vllm-env/bin/pip install "vllm==0.12.0"; }
 
 grep -q "source ~/venv/bin/activate" ~/.bashrc || echo "source ~/venv/bin/activate" >> ~/.bashrc
 [ -f .env ] || bash scripts/use_env.sh mock

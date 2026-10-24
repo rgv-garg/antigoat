@@ -53,7 +53,7 @@ class Settings:
             api_key=_f("ATTACKER_API_KEY", _f("LLM_API_KEY", "not-needed")),
             model=_f("ATTACKER_MODEL", _f("LLM_MODEL", "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16")),
             temperature=float(_f("ATTACKER_TEMPERATURE", "0.7")),
-            max_tokens=int(_f("ATTACKER_MAX_TOKENS", "1024")),
+            max_tokens=int(_f("ATTACKER_MAX_TOKENS", "4096")),
             thinking=_f("ATTACKER_THINKING", "true").lower() == "true",
         )
     )

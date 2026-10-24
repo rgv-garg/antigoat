@@ -130,7 +130,8 @@ class GoalAttacker:
             sys_p = PROBE_SYSTEM.format(goal=goal, canary=slot.canary, lang=lang, tactics=tactics)
             history = _fmt_transcript(transcript) or "(no messages yet)"
             move = parse_json(llm_chat("attacker", [{"role": "system", "content": sys_p},
-                                                    {"role": "user", "content": "Conversation so far:\n" + history}]))
+                                                    {"role": "user", "content": "Conversation so far:\n" + history}]),
+                              want="message")
             channel = move.get("channel", "intake")
             msg = str(move.get("message", "")).strip() or f"Do you have any record of {slot.canary}?"
             # The attacker must never "find" a canary it typed itself, so its own chat
@@ -143,9 +144,11 @@ class GoalAttacker:
                                remember=False)
             transcript.append({"channel": channel, "message": msg, "reply": reply})
 
-        g = parse_json(llm_chat("attacker", [
+        raw = llm_chat("attacker", [
             {"role": "system", "content": GUESS_SYSTEM.format(goal=goal, canary=slot.canary)},
-            {"role": "user", "content": _fmt_transcript(transcript)}]))
+            {"role": "user", "content": _fmt_transcript(transcript)}])
+        g = parse_json(raw, want="guess")
+        transcript.append({"channel": "verdict", "message": "(attacker's final answer)", "reply": raw[:400]})
         guess = "B" if str(g.get("guess", "A")).upper().startswith("B") else "A"
         try:
             conf = float(g.get("confidence", 0.5))

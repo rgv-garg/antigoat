@@ -108,3 +108,39 @@ def test_mem0_backend_and_erasure_residue():
         # Mem0's own delete leaves the raw text in its message buffer + history log;
         # Memory Checks' erasure purges both.
         assert (r["messages_table"] + r["history_table"] > 0) == residue, (mode, r)
+
+
+def test_parse_json_survives_messy_llm_output():
+    from llm import parse_json
+    assert parse_json('<think>maybe {"guess": "A"}</think>\n```json\n{"guess": "B", "confidence": 0.9}\n```',
+                      want="guess") == {"guess": "B", "confidence": 0.9}
+    assert parse_json('Example format {"guess": "A or B"}. Answer: {"guess": "B", "reason": "saw {code}"}',
+                      want="guess")["guess"] == "B"
+    assert parse_json('<think>ran out of tokens {"guess": "B"', want="guess") == {}
+    assert parse_json("no json here") == {}
+
+
+def test_empty_thinking_answer_is_retried_without_thinking():
+    import llm
+    from config import LLMRole
+    from types import SimpleNamespace as NS
+    calls = []
+
+    class FakeCompletions:
+        def create(self, **kw):
+            calls.append(kw["extra_body"]["chat_template_kwargs"]["enable_thinking"])
+            # thinking ON -> budget spent on reasoning, empty answer; OFF -> real answer
+            text = "<think>long rough work" if kw["extra_body"]["chat_template_kwargs"]["enable_thinking"] \
+                else '{"guess": "B", "confidence": 0.8}'
+            return NS(usage=None, choices=[NS(message=NS(content=text))])
+
+    cfg = LLMRole("http://fake/v1", "k", "m", 0.7, 64, True)
+    llm._clients[f"{cfg.base_url}|{cfg.api_key}"] = NS(chat=NS(completions=FakeCompletions()))
+    orig = llm._cfg
+    llm._cfg = lambda role: cfg
+    try:
+        out = llm.chat("attacker", [{"role": "user", "content": "x"}])
+    finally:
+        llm._cfg = orig
+    assert calls == [True, False]
+    assert llm.parse_json(out, want="guess")["guess"] == "B"
