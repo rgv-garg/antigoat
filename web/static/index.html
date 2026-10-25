@@ -28,7 +28,7 @@
 
     <details id="advanced">
       <summary>Advanced: toggle individual checks</summary>
-      <div class="hint" style="margin:6px 0 8px">Runs the full defence (ON) with the unchecked ones disabled — flip one off to show its leak return.</div>
+      <div class="hint" style="margin:6px 0 8px">Ticked = that check runs. From ON, untick one to show its leak return; from OFF, tick one to add just that check. All unticked = OFF.</div>
       <label class="chkrow"><input type="checkbox" class="chk" value="walls" checked> Walls — per-citizen isolation</label>
       <label class="chkrow"><input type="checkbox" class="chk" value="hard_delete" checked> Hard delete — erase for good</label>
       <label class="chkrow"><input type="checkbox" class="chk" value="authority" checked> Authority — who may teach this</label>
@@ -40,9 +40,12 @@
       <label class="chkrow"><input type="checkbox" class="chk" value="quarantine" checked> Quarantine — commands aren't facts</label>
     </details>
 
-    <div class="label">Citizen</div>
-    <input class="field" id="user" value="ramesh">
-    <input class="field" id="pin" value="560012">
+    <div class="label">Logged in as (citizen)</div>
+    <input class="field" id="user" value="ramesh" title="Citizen name">
+    <input class="field" id="pin" value="560012" title="Pincode">
+    <div class="hint" style="margin-top:2px">Type another name to log in as a <b>different citizen</b>. Sahayak's memory is kept, so you can test whether one citizen can see another's data.</div>
+    <button class="btn" id="btnEnd" title="Sahayak writes its summary of this citizen's visit">🏁 End visit (Sahayak writes its summary)</button>
+    <button class="btn" id="btnReset">↺ Start over (wipe all memory)</button>
 
     <details>
       <summary>Other actions (demo)</summary>
@@ -59,6 +62,14 @@
   <div class="center">
     <div class="chat" id="chat"></div>
     <div class="composer">
+      <div class="agentbar">
+        <span class="lbl">Talk to</span>
+        <div class="switch small" id="agents">
+          <button data-a="intake" class="on" title="Collects your details. Has an output filter that hides code-like secrets.">Intake</button>
+          <button data-a="grievance" title="Handles complaints. In the buggy build it has NO output filter - the side door.">Grievance</button>
+        </div>
+        <span class="hint" id="agenthint">Intake hides codes like word-1234 as [hidden].</span>
+      </div>
       <div class="row">
         <button class="iconbtn" id="mic" title="Speak (Sarvam voice)">🎙</button>
         <textarea id="box" rows="1" placeholder="Type in English, Hindi or Hinglish…  (or say: please forget my mobile number)"></textarea>

@@ -113,14 +113,16 @@ class Sahayak:
         if getattr(self.store, "is_mem0", False):
             self.store.ingest(user_id, message)  # the real Mem0 does its own extraction
             return
-        self.store.add(user_id, f"Citizen said: {message}", "citizen", "conversation")
+        turn = self.store.add(user_id, f"Citizen said: {message}", "citizen", "conversation")
         if agent == "intake" and SETTINGS.extract_mode == "llm":
             out = parse_json(llm_chat("sahayak", [{"role": "system", "content": EXTRACT_SYSTEM},
                                                   {"role": "user", "content": message}], max_tokens=256))
             facts = out.get("facts") if isinstance(out.get("facts"), list) else []
             for fact in facts[:5]:
                 if str(fact).strip():
-                    self.store.add(user_id, str(fact).strip(), "citizen", "personal_fact")
+                    # parent = the raw chat turn it came from, so erasing the fact can erase its source
+                    self.store.add(user_id, str(fact).strip(), "citizen", "personal_fact",
+                                   parents=(turn,) if turn else ())
 
     def say(self, user_id: str, message: str) -> None:
         """A citizen tells Sahayak something in normal conversation. With SAHAYAK_EXTRACT=llm the
@@ -144,6 +146,13 @@ class Sahayak:
         n = self.store.delete_matching(user_id, needle)
         self._log("delete_request", user_id, removed=n)
         return n
+
+    def forget_items(self, user_id: str, ids, label: str = "") -> list:
+        """Erasure by item (chat page: "forget my name" names a topic, not an exact string).
+        Also erases the raw chat turn each item was extracted from."""
+        removed = self.store.delete_items(user_id, ids, label)
+        self._log("delete_request", user_id, removed=len(removed))
+        return removed
 
     def end_session(self, user_id: str) -> None:
         self.store.summarise(user_id)

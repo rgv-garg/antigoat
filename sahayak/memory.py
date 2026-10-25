@@ -236,6 +236,39 @@ class MemoryStore:
                 self._receipt(owner, needle, len(dead))
         return n
 
+    def delete_items(self, owner: str, ids, label: str = "") -> list[Item]:
+        """Erase specific memories of `owner`, plus the raw chat turn each was extracted from.
+
+        delete_matching needs the exact text ("kesar-4135"); a citizen saying "forget my name"
+        gives a topic instead, so the caller picks the items. Same two behaviours: without
+        hard_delete it is a soft hide (the soft_delete bug can bring it back in the next
+        summary); with hard_delete the items, their source turns and everything derived from
+        them are purged, with a signed receipt. Returns the items that were erased.
+        """
+        with self._lock:
+            targets = {i for i in ids if i in self.items and self.items[i].owner == owner
+                       and self.items[i].status != "deleted"}
+            for i in list(targets):  # the raw turn a fact was extracted from says the same thing
+                for p in self.items[i].parents:
+                    src = self.items.get(p)
+                    if src and src.owner == owner and src.btype == "conversation" and src.status != "deleted":
+                        targets.add(p)
+            removed = [self.items[i] for i in sorted(targets)]
+            for it in removed:
+                self.items[it.id] = replace(it, status="deleted")
+            if targets and self.checks.feature("hard_delete"):
+                dead, changed = set(targets), True
+                while changed:  # cascade: anything derived from an erased item goes too
+                    changed = False
+                    for it in list(self.items.values()):
+                        if it.id not in dead and dead & set(it.parents):
+                            dead.add(it.id)
+                            changed = True
+                for d in dead:
+                    self.items.pop(d, None)
+                self._receipt(owner, label or f"{len(targets)} item(s)", len(dead))
+        return removed
+
     def _receipt(self, owner: str, needle: str, n_purged: int) -> None:
         """Record a tamper-evident proof that an erasure happened (deletion receipt)."""
         import time as _t

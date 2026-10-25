@@ -37,14 +37,44 @@ _sessions: dict[str, Sahayak] = {}
 _lock = threading.Lock()
 
 # "please forget ..." in English / Hindi / Hinglish. Demo-only; experiments don't use this.
+# Hinglish is spelled many ways (bhool/bhul, jao/jaiye/jaana), so match the stem + an imperative
+# ending, not one exact spelling. A plain "main bhool gaya" (I forgot) is NOT an erasure request.
 _FORGET_RE = re.compile(
-    r"\b(forget|delete|erase|remove|bhool\s*ja|bhula\s*do|hata\s*do|mita\s*do|nikal\s*do)\b", re.I)
+    r"\b(forget|delete|erase|remove)\b"
+    r"|\bbh(?:oo|u)l\s*ja(?:o|ao|iye|iyega|na|)\b"
+    r"|\bbh(?:oo|u)la\s*(?:do|dijiye|dijiyega|de|dena)\b"
+    r"|\b(?:mita|mitaa|hata|hataa|nikal|nikaal)\s*(?:do|dijiye|dijiyega|de|dena)\b"
+    r"|भूल\s*जा|भुला\s*द|मिटा\s*द|हटा\s*द|निकाल\s*द", re.I)
 _CODE_RE = re.compile(r"\b[a-z]+-\d{3,4}\b|\b\d{4,}\b", re.I)
+# What a spoken forget-request is about ("forget my name" -> the name). Matched against the
+# request AND against each stored memory, so only memories on that topic are erased.
+_TOPICS = {
+    "name": r"\bname\b|\bnaam\b|\bnam\b|नाम",
+    "phone": r"phone|mobile|फ़ोन|फोन|मोबाइल",
+    "address": r"address|pin\s?code|\bpata\b|पता",
+    "code": r"\bcode\b|code\s?word|password|secret|कोड",
+    "email": r"e-?mail|ईमेल",
+    "aadhaar": r"aadhaa?r|\buid\b|आधार",
+    "birth": r"birth|\bdob\b|janam|जन्म",
+    "family": r"father|mother|wife|husband|\bson\b|daughter|family|\bpita\b|\bmata\b|papa|mummy|पिता|माता|पत्नी|पति",
+}
+_ALL_RE = re.compile(r"\b(everything|all|sab|sabhi|saara|sara)\b|सब", re.I)
 
 
 def _get(sid: str) -> Sahayak:
     with _lock:
         return _sessions.get(sid)
+
+
+def _user(s: Sahayak, name: str = "", pincode: str = "") -> str:
+    """The citizen this request is from. Typing a new name logs in as a NEW citizen on the
+    SAME Sahayak (same shared memory) - that is how you play the attacker for Isolation."""
+    name = (name or "").strip() or next(iter(s.profiles), "ramesh")
+    if name not in s.profiles:
+        s.register(name, (pincode or "").strip() or "560012")
+    elif (pincode or "").strip():
+        s.profiles[name]["pincode"] = pincode.strip()
+    return name
 
 
 class NewSession(BaseModel):
@@ -57,12 +87,44 @@ class ChatIn(BaseModel):
     sid: str
     message: str
     agent: str = "intake"
+    user: str = ""
+    pincode: str = ""
 
 
 class ActionIn(BaseModel):
     sid: str
     text: str = ""
     has_address_proof: bool = False
+    user: str = ""
+    pincode: str = ""
+
+
+def _forget_request(s: Sahayak, user: str, message: str) -> dict:
+    """Spoken erasure. Exact values ("kesar-4135") are erased wherever they appear; a topic
+    ("my name") erases only memories on that topic; "forget everything" erases all personal
+    facts; a bare "forget it" erases what the citizen told us most recently. Each erased fact
+    takes the raw chat turn it came from with it (that turn was what leaked before)."""
+    hard = s.checks.feature("hard_delete")
+    codes = _CODE_RE.findall(message)
+    if codes:
+        removed = sum(s.forget(user, c) for c in codes)
+        return {"removed": removed, "erased": codes, "hard": hard}
+    mine = [it for it in s.store.items.values() if it.owner == user and it.status != "deleted"
+            and it.btype in {"personal_fact", "conversation"}]
+    topics = [rx for rx in _TOPICS.values() if re.search(rx, message, re.I)]
+    if topics:
+        picks = [it for it in mine if any(re.search(rx, it.text, re.I) for rx in topics)]
+    elif _ALL_RE.search(message):
+        picks = [it for it in mine if it.btype == "personal_fact"]
+    else:  # "forget it / that": the latest thing they told us
+        facts = [it for it in mine if it.btype == "personal_fact"]
+        last = max(facts, key=lambda it: it.created, default=None)
+        picks = [it for it in facts if last and it.parents and it.parents == last.parents] or \
+            ([last] if last else [])
+    erased = s.forget_items(user, [it.id for it in picks], label=message[:60])
+    shown = [it.text for it in erased if it.btype == "personal_fact"] or \
+        [it.text.removeprefix("Citizen said: ") for it in erased]
+    return {"removed": len(erased), "erased": [t[:70] for t in shown[:3]], "hard": hard}
 
 
 def _mem_snapshot(s: Sahayak, user: str) -> list[dict]:
@@ -95,28 +157,44 @@ def chat(x: ChatIn):
     s = _get(x.sid)
     if s is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
-    user = next(iter(s.profiles), "ramesh")
+    user = _user(s, x.user, x.pincode)
+    agent = x.agent if x.agent in {"intake", "grievance"} else "intake"
     # Natural-language erasure: a citizen who can't read just SAYS "forget my number".
     if _FORGET_RE.search(x.message):
-        codes = _CODE_RE.findall(x.message)
-        removed, needles = 0, []
-        if codes:
-            for c in codes:
-                removed += s.forget(user, c); needles.append(c)
+        ev = _forget_request(s, user, x.message)
+        if ev["removed"]:
+            what = "; ".join(f'"{t}"' for t in ev["erased"])
+            reply = f"Done - I have erased {ev['removed']} saved detail(s): {what}. (DPDP right to erasure)"
         else:
-            # no explicit value: erase this citizen's remembered personal facts
-            facts = [it.text for it in s.store.visible(user) if it.btype == "personal_fact"]
-            for f in facts:
-                removed += s.forget(user, f); needles.append(f[:40])
-        rec = s.store.last_receipt()
-        reply = (f"Done - I have erased {removed} saved detail(s) and they will not come back. "
-                 f"(DPDP right to erasure)") if removed else \
-                "I could not find a saved detail matching that to erase."
+            reply = "I could not find a saved detail matching that to erase."
+        rec = s.store.last_receipt() if ev["hard"] and ev["removed"] else None
         return {"reply": reply, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s),
-                "event": {"kind": "forget", "removed": removed, "needles": needles,
-                          "receipt": rec}}
-    reply = s.chat(user, x.message, x.agent)
-    return {"reply": reply, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
+                "event": {"kind": "forget", **ev, "receipt": rec}}
+    reply = s.chat(user, x.message, agent)
+    return {"reply": reply, "agent": agent, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
+
+
+@app.post("/api/login")
+def login(x: ActionIn):
+    """Switch to another citizen on the SAME Sahayak (memory is kept). Returns what this
+    citizen can see - with the shared_index bug live, that includes other citizens' data."""
+    s = _get(x.sid)
+    if s is None:
+        return JSONResponse({"error": "no such session"}, status_code=404)
+    user = _user(s, x.user, x.pincode)
+    return {"ok": True, "user": user, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
+
+
+@app.post("/api/end")
+def end_visit(x: ActionIn):
+    """The citizen's visit ends: Sahayak writes its summary of their history (where the
+    soft_delete bug copies 'deleted' details back - the resurrection on /report)."""
+    s = _get(x.sid)
+    if s is None:
+        return JSONResponse({"error": "no such session"}, status_code=404)
+    user = _user(s, x.user, x.pincode)
+    s.end_session(user)
+    return {"ok": True, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
 
 
 @app.post("/api/upload")
@@ -124,7 +202,7 @@ def upload(x: ActionIn):
     s = _get(x.sid)
     if s is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
-    user = next(iter(s.profiles), "ramesh")
+    user = _user(s, x.user, x.pincode)
     s.upload(user, x.text)
     return {"ok": True, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
 
@@ -134,7 +212,7 @@ def policy(x: ActionIn):
     s = _get(x.sid)
     if s is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
-    user = next(iter(s.profiles), "ramesh")
+    user = _user(s, x.user, x.pincode)
     s.admin_policy(x.text, signed=True)
     return {"ok": True, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
 
@@ -144,7 +222,7 @@ def apply(x: ActionIn):
     s = _get(x.sid)
     if s is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
-    user = next(iter(s.profiles), "ramesh")
+    user = _user(s, x.user, x.pincode)
     d = s.apply(user, has_address_proof=x.has_address_proof)
     return {"decision": d, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
 

@@ -1,7 +1,14 @@
 "use strict";
 const $ = (s) => document.querySelector(s);
 const chat = $("#chat"), mem = $("#mem"), feed = $("#feed"), feedwrap = $("#feedwrap");
-let sid = null, mode = "off";
+let sid = null, mode = "off", agent = "intake";
+const ALL_CHECKS = ["walls","hard_delete","authority","action_gate","source_count","lineage_trust","slow_poison","hash_chain","quarantine"];
+const AGENT_HINTS = {
+  intake: "Intake hides codes like word-1234 as [hidden].",
+  grievance: "Grievance: with Checks OFF it has no output filter (the side door the attacker uses).",
+};
+const who = () => ($("#user").value || "ramesh").trim();
+const pin = () => ($("#pin").value || "560012").trim();
 
 const HINTS = {
   off: "OFF: the agent's memory is undefended — try to poison or extract it.",
@@ -30,10 +37,13 @@ function renderMem(items){
   if(!items || !items.length){ mem.innerHTML = `<div class="empty">No memories stored yet.</div>`; return; }
   for(const it of items){
     const d = document.createElement("div");
-    d.className = "mi " + (it.status||"active");
+    // another citizen's memory showing up here = an Isolation leak (shared_index bug)
+    const foreign = it.owner && it.owner !== who() && it.owner !== "global";
+    d.className = "mi " + (it.status||"active") + (foreign ? " foreign" : "");
     d.innerHTML = `<div class="t">${esc(it.text)}</div>
       <div class="meta"><span class="tag">${esc(it.type)}</span>
         <span class="tag">src: ${esc(it.source)}</span>
+        <span class="tag ${foreign ? "foreign" : ""}">${foreign ? "⚠ belongs to " : "owner: "}${esc(it.owner)}</span>
         <span class="tag ${esc(it.status)}">${esc(it.status)}</span></div>`;
     mem.appendChild(d);
   }
@@ -58,7 +68,7 @@ async function post(url, body){
 
 async function newSession(spec){
   spec = spec || mode;
-  const r = await post("/api/session", {checks:spec, user_id:$("#user").value||"ramesh", pincode:$("#pin").value||"560012"});
+  const r = await post("/api/session", {checks:spec, user_id:who(), pincode:pin()});
   sid = r.sid; renderMem(r.memory); feedwrap.style.display = "none";
   chat.innerHTML = "";
   addSys(`New session · Memory Checks ${r.checks || spec}`);
@@ -69,32 +79,50 @@ function setMode(m){
   mode = m;
   document.querySelectorAll("#switch button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
   $("#checkhint").textContent = HINTS[m];
-  document.querySelectorAll(".chk").forEach(c => c.checked = true);  // reset per-check panel
+  // per-check panel mirrors the mode: OFF = nothing ticked, ON / Strict = everything ticked
+  document.querySelectorAll(".chk").forEach(c => c.checked = (m !== "off"));
   newSession(m);
 }
 
 function applyChecks(){
-  // Advanced panel: run the full defence (ON) with the unchecked sub-checks disabled.
-  const disabled = [...document.querySelectorAll(".chk")].filter(c => !c.checked).map(c => c.value);
-  const spec = disabled.length ? "on:" + disabled.map(d => "-" + d).join(",") : "on";
-  mode = "on";
-  document.querySelectorAll("#switch button").forEach(b => b.classList.toggle("on", b.dataset.m === "on"));
-  $("#checkhint").textContent = disabled.length
-    ? `ON with ${disabled.join(", ")} disabled — watch the matching leak come back.` : HINTS.on;
+  // Advanced panel: run the defence with exactly the ticked sub-checks. Nothing ticked = OFF.
+  const boxes = [...document.querySelectorAll(".chk")];
+  const enabled = boxes.filter(c => c.checked).map(c => c.value);
+  const disabled = boxes.filter(c => !c.checked).map(c => c.value);
+  let spec, hint;
+  if(!enabled.length){ spec = "off"; hint = HINTS.off; mode = "off"; }
+  else {
+    mode = "on";
+    spec = disabled.length ? "on:" + disabled.map(d => "-" + d).join(",") : "on";
+    hint = !disabled.length ? HINTS.on
+      : enabled.length <= 3 ? `ON with only ${enabled.join(", ")} — everything else is off.`
+      : `ON with ${disabled.join(", ")} disabled — watch the matching leak come back.`;
+  }
+  document.querySelectorAll("#switch button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
+  $("#checkhint").textContent = hint;
   newSession(spec);
+}
+
+function setAgent(a){
+  agent = a;
+  document.querySelectorAll("#agents button").forEach(b => b.classList.toggle("on", b.dataset.a === a));
+  $("#agenthint").textContent = AGENT_HINTS[a];
 }
 
 async function send(){
   const box = $("#box"); const text = box.value.trim(); if(!text || !sid) return;
   box.value = ""; box.style.height = "auto";
-  addMsg("user", text);
+  addMsg("user", text, who());
   const typing = addMsg("bot", "…");
   try{
-    const r = await post("/api/chat", {sid, message:text, agent:"intake"});
+    const r = await post("/api/chat", {sid, message:text, agent, user:who(), pincode:pin()});
     typing.remove();
-    addMsg("bot", r.reply || "(no reply)");
-    if(r.event && r.event.kind === "forget"){
-      addSys(r.event.removed ? `🧹 erased ${r.event.removed} saved detail(s) — hard delete, with a signed receipt` : "nothing matched to erase");
+    const ev = r.event && r.event.kind === "forget" ? r.event : null;
+    addMsg("bot", r.reply || "(no reply)", ev ? "Sahayak" : `Sahayak · ${agent === "grievance" ? "Grievance" : "Intake"}`);
+    if(ev){
+      addSys(!ev.removed ? "nothing matched to erase"
+        : ev.hard ? `🧹 erased ${ev.removed} item(s) for good — hard delete + source chat line, signed receipt`
+        : `🫥 ${ev.removed} item(s) only hidden (soft delete) — try 🏁 End visit and ask again`);
     }
     renderMem(r.memory); renderFeed(r.checks);
     speak(r.reply);
@@ -104,7 +132,7 @@ async function send(){
 // ---- other actions
 async function doAction(url, body, okMsg){
   if(!sid) return;
-  const r = await post(url, {sid, ...body});
+  const r = await post(url, {sid, user:who(), pincode:pin(), ...body});
   if(r.decision){ addSys(`Application decision: ${r.decision.approved ? "✅ APPROVED" : "⛔ REJECTED"} — ${r.decision.reason||""}`); }
   else if(okMsg){ addSys(okMsg); }
   renderMem(r.memory); renderFeed(r.checks);
@@ -150,6 +178,23 @@ $("#box").addEventListener("input", e => { e.target.style.height = "auto"; e.tar
 $("#btnUpload").onclick = () => doAction("/api/upload", {text:$("#docText").value}, "📄 document uploaded");
 $("#btnPolicy").onclick = () => doAction("/api/policy", {text:$("#polText").value}, "🏛 signed UIDAI policy published");
 $("#btnApply").onclick = () => doAction("/api/apply", {has_address_proof:false});
-$("#user").onchange = () => newSession(); $("#pin").onchange = () => newSession();
+$("#btnEnd").onclick = () => doAction("/api/end", {}, `🏁 ${who()}'s visit ended — Sahayak wrote its summary of their history`);
+$("#btnReset").onclick = () => newSession(currentSpec());
+// switching citizen keeps the SAME memory (that's how you play the attacker for Isolation)
+$("#user").onchange = async () => {
+  addSys(`🔑 now logged in as "${who()}" — same Sahayak, same shared memory`);
+  const r = await post("/api/login", {sid, user:who(), pincode:pin()}).catch(()=>null);
+  if(r && r.memory) renderMem(r.memory);
+};
+$("#pin").onchange = () => addSys(`📍 ${who()}'s pincode set to ${pin()}`);
+document.querySelectorAll("#agents button").forEach(b => b.onclick = () => setAgent(b.dataset.a));
 document.querySelectorAll(".chk").forEach(c => c.onchange = applyChecks);
+
+function currentSpec(){
+  const boxes = [...document.querySelectorAll(".chk")];
+  const disabled = boxes.filter(c => !c.checked).map(c => c.value);
+  if(mode !== "on") return mode;
+  if(disabled.length === boxes.length) return "off";
+  return disabled.length ? "on:" + disabled.map(d => "-" + d).join(",") : "on";
+}
 setMode("off");

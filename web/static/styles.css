@@ -43,6 +43,14 @@ button{font-family:inherit;cursor:pointer}
 .switch button.on[data-m="on"]{background:rgba(47,163,107,.18);color:#5fd49b;box-shadow:inset 0 0 0 1px rgba(47,163,107,.4)}
 .switch button.on[data-m="paranoid"]{background:rgba(74,144,226,.16);color:#8cc0ff;box-shadow:inset 0 0 0 1px rgba(74,144,226,.4)}
 .hint{color:var(--ink3);font-size:12px;margin:8px 2px 0}
+.agentbar{display:flex;align-items:center;gap:10px;max-width:760px;margin:0 auto 10px;flex-wrap:wrap}
+.agentbar .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3)}
+.agentbar .hint{margin:0}
+.switch.small{padding:3px;border-radius:10px}
+.switch.small button{flex:none;padding:5px 12px;font-size:12.5px;border-radius:7px}
+.switch.small button.on{background:rgba(232,136,59,.18);color:#f3a86b;box-shadow:inset 0 0 0 1px rgba(232,136,59,.45)}
+.mi.foreign{border-color:rgba(229,72,77,.55);background:rgba(229,72,77,.07)}
+.tag.foreign{color:#ff8f93}
 
 .btn{width:100%;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
   border-radius:10px;padding:9px;font-size:13px;margin-top:6px}
