@@ -22,19 +22,23 @@ run () {  # run <name> <args...>
   if python "$@"; then echo "<<< [$name] OK"; else echo "<<< [$name] FAILED (continuing)"; fi
 }
 
-# 1) The headline twin-world sweep: 200 citizens per rule, all five rules (incl. the new
-#    entangled-deletion rule), every checkpoint, OFF vs v2 (before Verified Erasure) vs ON vs
-#    Strict, goal attacker + fixed-list baseline.
-run main   run_experiment.py --slots 200 --sessions 0,1,5,10 \
+# Sized for a 27B model (Qwen3.8-27B) on one H100 so it finishes overnight (~5-7 h).
+# On a faster setup raise SLOTS / SESSIONS:  SLOTS=200 SESSIONS=0,1,5,10 bash scripts/overnight.sh
+SLOTS="${SLOTS:-120}"
+SESSIONS="${SESSIONS:-0,1,5}"
+
+# 1) The headline twin-world sweep: all five rules (incl. the new entangled-deletion rule),
+#    OFF vs v2 (before Verified Erasure) vs ON vs Strict, goal attacker + fixed-list baseline.
+run main   run_experiment.py --slots "$SLOTS" --sessions "$SESSIONS" --bg-sample 0.5 \
            --checks off,v2,on,paranoid --attackers goal,fixed --tag full
 
 # 2) False-alarm calibration: a CLEAN system (no planted bugs) should be flagged ~1% of the time.
-run calib  run_experiment.py --no-bugs --checks off --slots 200 --sessions 0,1 \
+run calib  run_experiment.py --no-bugs --checks off --slots "$SLOTS" --sessions 0,1 --bg-sample 0.5 \
            --attackers goal --tag calib
 
 # 3) Real library: Mem0 2.2.1 as shipped (its own extraction), nothing planted.
 #    Deletion (resurrection curve) + entangled deletion, OFF vs v2 vs ON.
-run mem0   run_experiment.py --backend mem0 --rules deletion,entangled --slots 80 --sessions 0,1,5,10 \
+run mem0   run_experiment.py --backend mem0 --rules deletion,entangled --slots 60 --sessions "$SESSIONS" \
            --checks off,v2,on --attackers goal --tag mem0
 
 # 3b) White-box deletion-at-rest probe inside Mem0's own storage (quotable numbers).
