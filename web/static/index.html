@@ -26,6 +26,20 @@
     </div>
     <div class="hint" id="checkhint">OFF: the agent's memory is undefended — try to poison or extract it.</div>
 
+    <details id="advanced">
+      <summary>Advanced: toggle individual checks</summary>
+      <div class="hint" style="margin:6px 0 8px">Runs the full defence (ON) with the unchecked ones disabled — flip one off to show its leak return.</div>
+      <label class="chkrow"><input type="checkbox" class="chk" value="walls" checked> Walls — per-citizen isolation</label>
+      <label class="chkrow"><input type="checkbox" class="chk" value="hard_delete" checked> Hard delete — erase for good</label>
+      <label class="chkrow"><input type="checkbox" class="chk" value="authority" checked> Authority — who may teach this</label>
+      <label class="chkrow"><input type="checkbox" class="chk" value="action_gate" checked> Action gate — only signed policy acts</label>
+      <label class="chkrow"><input type="checkbox" class="chk" value="source_count" checked> Source count — ten copies ≠ ten witnesses</label>
+      <label class="chkrow"><input type="checkbox" class="chk" value="lineage_trust" checked> Lineage trust — least-trusted parent</label>
+      <label class="chkrow"><input type="checkbox" class="chk" value="slow_poison" checked> Slow poison — drip guard</label>
+      <label class="chkrow"><input type="checkbox" class="chk" value="hash_chain" checked> Hash chain — tamper-evident log</label>
+      <label class="chkrow"><input type="checkbox" class="chk" value="quarantine" checked> Quarantine — commands aren't facts</label>
+    </details>
+
     <div class="label">Citizen</div>
     <input class="field" id="user" value="ramesh">
     <input class="field" id="pin" value="560012">

@@ -56,11 +56,12 @@ async function post(url, body){
   return r.json();
 }
 
-async function newSession(){
-  const r = await post("/api/session", {checks:mode, user_id:$("#user").value||"ramesh", pincode:$("#pin").value||"560012"});
+async function newSession(spec){
+  spec = spec || mode;
+  const r = await post("/api/session", {checks:spec, user_id:$("#user").value||"ramesh", pincode:$("#pin").value||"560012"});
   sid = r.sid; renderMem(r.memory); feedwrap.style.display = "none";
   chat.innerHTML = "";
-  addSys(`New session · Memory Checks ${mode.toUpperCase()}`);
+  addSys(`New session · Memory Checks ${r.checks || spec}`);
   addMsg("bot", "Namaste! I'm Sahayak. I can help you apply for or update your Aadhaar. You can type or tap the mic and speak in your own language.");
 }
 
@@ -68,7 +69,19 @@ function setMode(m){
   mode = m;
   document.querySelectorAll("#switch button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
   $("#checkhint").textContent = HINTS[m];
-  newSession();
+  document.querySelectorAll(".chk").forEach(c => c.checked = true);  // reset per-check panel
+  newSession(m);
+}
+
+function applyChecks(){
+  // Advanced panel: run the full defence (ON) with the unchecked sub-checks disabled.
+  const disabled = [...document.querySelectorAll(".chk")].filter(c => !c.checked).map(c => c.value);
+  const spec = disabled.length ? "on:" + disabled.map(d => "-" + d).join(",") : "on";
+  mode = "on";
+  document.querySelectorAll("#switch button").forEach(b => b.classList.toggle("on", b.dataset.m === "on"));
+  $("#checkhint").textContent = disabled.length
+    ? `ON with ${disabled.join(", ")} disabled — watch the matching leak come back.` : HINTS.on;
+  newSession(spec);
 }
 
 async function send(){
@@ -137,5 +150,6 @@ $("#box").addEventListener("input", e => { e.target.style.height = "auto"; e.tar
 $("#btnUpload").onclick = () => doAction("/api/upload", {text:$("#docText").value}, "📄 document uploaded");
 $("#btnPolicy").onclick = () => doAction("/api/policy", {text:$("#polText").value}, "🏛 signed UIDAI policy published");
 $("#btnApply").onclick = () => doAction("/api/apply", {has_address_proof:false});
-$("#user").onchange = newSession; $("#pin").onchange = newSession;
+$("#user").onchange = () => newSession(); $("#pin").onchange = () => newSession();
+document.querySelectorAll(".chk").forEach(c => c.onchange = applyChecks);
 setMode("off");

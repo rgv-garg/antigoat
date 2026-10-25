@@ -205,6 +205,8 @@ def replay(run: str, rule: str, checks: str = "off", sessions: int = 0, only_b: 
         return JSONResponse({"error": "no runs found"}, status_code=404)
     out = []
     for r in load(path):
+        if r.get("attacker") == "fixed":
+            continue  # show the goal-driven (or decision) attacker, not the fixed-list duplicate
         if r["rule"] == rule and r["checks"] == checks and int(r["sessions"]) == int(sessions):
             if only_b and r.get("coin") != 1:
                 continue
