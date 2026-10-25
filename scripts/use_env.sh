@@ -2,6 +2,8 @@
 # Writes .env for you, so nobody has to hand-edit it.
 #   bash scripts/use_env.sh hosted nvapi-XXXX   -> NVIDIA-hosted Nemotron (no GPU needed, rate-limited)
 #   bash scripts/use_env.sh brev                -> the model served on this Brev GPU (scripts/serve_vllm.sh)
+#   bash scripts/use_env.sh open                -> a current open model on this GPU (scripts/serve_model.sh,
+#                                                  default Qwen3.8-27B) for both Sahayak and the attacker
 #   bash scripts/use_env.sh mock                -> offline fake model (tests only)
 # Any SARVAM_API_KEY already in .env is kept.
 set -euo pipefail
@@ -23,11 +25,17 @@ LLM_API_KEY=not-needed
 LLM_MODEL=nemotron-nano
 EMBED_MODEL=BAAI/bge-m3
 MAX_WORKERS=96" ;;
+  open)
+    block="LLM_BASE_URL=http://localhost:8000/v1
+LLM_API_KEY=not-needed
+LLM_MODEL=target
+EMBED_MODEL=BAAI/bge-m3
+MAX_WORKERS=64" ;;
   mock)
     block="LLM_BASE_URL=mock
 EMBED_MODEL=hash
 MAX_WORKERS=16" ;;
-  *) echo "usage: bash scripts/use_env.sh hosted nvapi-XXXX | brev | mock"; exit 1 ;;
+  *) echo "usage: bash scripts/use_env.sh hosted nvapi-XXXX | brev | open | mock"; exit 1 ;;
 esac
 
 cat > .env <<ENV

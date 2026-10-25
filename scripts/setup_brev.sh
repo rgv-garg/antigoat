@@ -11,8 +11,14 @@ pip install -r requirements.txt
 pip install sentence-transformers 'huggingface_hub[cli]'   # bge-m3 embeddings
 pip install -r requirements-mem0.txt  # real Mem0 library for --backend mem0
 
-# vLLM in its own venv, pinned to 0.12.0: the A100 driver (CUDA 12.7) cannot run the newest vLLM (CUDA 13)
-[ -d ~/vllm-env ] || { python3 -m venv ~/vllm-env && ~/vllm-env/bin/pip install "vllm==0.12.0"; }
+# vLLM in its own venv. Old driver (< 580, e.g. the first A100 box): pinned 0.12.0 for Nemotron Nano.
+# New driver: the current vLLM for 2026 open models - see scripts/setup_vllm_latest.sh.
+DRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)
+if [ "${DRV%%.*}" -lt 580 ]; then
+  [ -d ~/vllm-env ] || { python3 -m venv ~/vllm-env && ~/vllm-env/bin/pip install "vllm==0.12.0"; }
+else
+  echo "Driver $DRV: run  bash scripts/setup_vllm_latest.sh  next for the current vLLM."
+fi
 
 grep -q "source ~/venv/bin/activate" ~/.bashrc || echo "source ~/venv/bin/activate" >> ~/.bashrc
 [ -f .env ] || bash scripts/use_env.sh mock
