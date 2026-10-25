@@ -26,6 +26,7 @@ import numpy as np
 
 from sahayak.checks import MemoryChecks
 from sahayak.embed import embed
+from sahayak.erasure import MASK, Tombstones, pattern, still_useful
 
 DEFAULT_BUGS = {"shared_index": True, "soft_delete": True, "doc_as_rule": True, "guardrail_gap": True}
 GLOBAL = "global"  # owner for policies that apply to everyone
@@ -64,6 +65,7 @@ class MemoryStore:
         self.bugs = dict(DEFAULT_BUGS if bugs is None else bugs)
         self.items: dict[int, Item] = {}
         self.receipts: list[dict] = []   # signed DPDP erasure receipts (hard_delete)
+        self.tomb = Tombstones()          # hashes of erased values (tombstone check)
         self._ids = itertools.count(1)
         self._clock = 0
         self._lock = threading.RLock()
@@ -89,6 +91,7 @@ class MemoryStore:
             new = MemoryStore(self.checks, self.bugs)
             new.items = dict(self.items)
             new.receipts = list(self.receipts)
+            new.tomb = self.tomb  # audits never erase, so sharing is safe
             start = max(self.items, default=0) + 1
             new._ids = itertools.count(start)
             new._clock = self._clock
@@ -98,6 +101,11 @@ class MemoryStore:
     def add(self, owner: str, text: str, source: str, btype: str,
             parents: tuple = (), meta: dict | None = None) -> int | None:
         meta = dict(meta or {})
+        if self.checks.feature("tombstone"):
+            # an erased value can never be written back - not by a summary, not by re-extraction
+            text, n_tomb = self.tomb.redact(meta.get("uploaded_by", owner), text)
+            if n_tomb:
+                meta["tombstoned"] = n_tomb
         decision = self.checks.route(source, btype, meta.get("signature"), text)
         if decision == "no":
             if btype in {"policy", "instruction"} and self.checks.mode == "on":
@@ -212,6 +220,9 @@ class MemoryStore:
         off, or hard_delete disabled for ablation) it is only a soft hide, so the soft_delete
         bug can resurrect it through the next summary.
         """
+        if self.checks.feature("entity_erasure"):
+            rep = self.erase_values(owner, [needle], label="exact value")
+            return rep["memories_deleted"] + rep["memories_redacted"]
         n = 0
         with self._lock:
             targets = [it for it in self.items.values()
@@ -269,13 +280,112 @@ class MemoryStore:
                 self._receipt(owner, label or f"{len(targets)} item(s)", len(dead))
         return removed
 
-    def _receipt(self, owner: str, needle: str, n_purged: int) -> None:
-        """Record a tamper-evident proof that an erasure happened (deletion receipt)."""
+    def _receipt(self, owner: str, needle: str, n_purged: int, values=(), residue: dict | None = None) -> dict:
+        """Record a tamper-evident proof that an erasure happened (deletion receipt).
+        The receipt never contains the erased text: values are recorded as salted hashes."""
+        import hashlib
         import time as _t
         from sahayak.checks import sign
-        body = f"ERASURE owner={owner} match={needle!r} purged={n_purged} at={int(_t.time())}"
-        self.receipts.append({"owner": owner, "needle": needle, "purged": n_purged,
-                              "signature": sign(body), "chain_head": self.checks.append_chain(body)})
+        hashed = [hashlib.sha256(self.tomb.salt + str(v).lower().encode()).hexdigest()[:12] for v in values]
+        what = needle
+        for v in values:
+            what = pattern(v).sub(MASK, what)
+        body = f"ERASURE owner={owner} what={what!r} values={hashed} purged={n_purged} at={int(_t.time())}"
+        rec = {"owner": owner, "what": what, "values_hashed": hashed, "purged": n_purged,
+               "residue_after": residue, "at": int(_t.time()),
+               "signature": sign(body), "chain_head": self.checks.append_chain(body)}
+        self.receipts.append(rec)
+        return rec
+
+    # ------------------------------------------------------------------ Verified Erasure (v3)
+    def erase_values(self, owner: str, values, label: str = "") -> dict:
+        """Entity-level erasure: remove each VALUE from every item of `owner` it appears in.
+
+        An item that was only about the value is deleted; an entangled item keeps its useful
+        part ("[erased] and Raghu had a fight"). Soft-deleted copies are purged too. The
+        routing log is scrubbed, a tombstone (hash) is kept so the value cannot be written
+        back, and the store is re-scanned - the receipt carries that residue (all zeros)."""
+        values = [v for v in values if v]
+        rxs = [pattern(v) for v in values]
+        rep = {"memories_deleted": 0, "memories_redacted": 0, "log_lines": 0}
+        if not rxs:
+            return rep
+        with self._lock:
+            for it in list(self.items.values()):
+                if not (it.owner == owner or it.meta.get("uploaded_by") == owner):
+                    continue
+                new, n = it.text, 0
+                for rx in rxs:
+                    new, k = rx.subn(MASK, new)
+                    n += k
+                if not n:
+                    continue
+                if it.status == "deleted" or not still_useful(new):
+                    self.items.pop(it.id, None)
+                    rep["memories_deleted"] += 1
+                else:
+                    self.items[it.id] = replace(it, text=new, emb=embed([new])[0],
+                                                meta={**it.meta, "redacted": True})
+                    rep["memories_redacted"] += 1
+            for d in self.checks.log:
+                t, hit = d.get("text", ""), 0
+                for rx in rxs:
+                    t, k = rx.subn(MASK, t)
+                    hit += k
+                if hit:
+                    d["text"] = t
+                    rep["log_lines"] += 1
+            if self.checks.feature("tombstone"):
+                for v in values:
+                    self.tomb.add(owner, v, label)
+        rep["residue_after"] = self.scan(owner, values)
+        rep["receipt"] = self._receipt(owner, label or "erasure", rep["memories_deleted"] + rep["memories_redacted"],
+                                       values, rep["residue_after"])
+        return rep
+
+    LOCATIONS = ("memories", "chat turns", "summaries", "hidden (soft-deleted) copies",
+                 "other citizens' records", "routing log", "audit chain", "erasure receipts")
+
+    def find(self, owner: str, values) -> list[tuple[str, str]]:
+        """Memory X-ray: every (location, text) where one of `values` still lives.
+        Runs with Checks OFF too - the same scan before and after a forget-request."""
+        rxs = [pattern(v) for v in values if v]
+        if not rxs:
+            return []
+
+        def hit(t) -> bool:
+            return any(rx.search(t or "") for rx in rxs)
+
+        out = []
+        with self._lock:
+            items = sorted(self.items.values(), key=lambda it: it.id)
+        for it in items:
+            if not hit(it.text):
+                continue
+            mine = it.owner == owner or it.meta.get("uploaded_by") == owner
+            if not mine:
+                loc = "other citizens' records"
+            elif it.status == "deleted":
+                loc = "hidden (soft-deleted) copies"
+            elif it.btype == "summary":
+                loc = "summaries"
+            elif it.btype == "conversation":
+                loc = "chat turns"
+            else:
+                loc = "memories"
+            out.append((loc, it.text))
+        out += [("routing log", d.get("text", "")) for d in self.checks.log if hit(d.get("text", ""))]
+        out += [("audit chain", r.get("payload", "")) for r in self.checks.chain if hit(r.get("payload", ""))]
+        out += [("erasure receipts", str(r.get("what") or r.get("needle", ""))) for r in self.receipts
+                if hit(str(r.get("what", ""))) or hit(str(r.get("needle", "")))]
+        return out
+
+    def scan(self, owner: str, values) -> dict:
+        """Counts per location (see find)."""
+        loc = {k: 0 for k in self.LOCATIONS}
+        for where, _ in self.find(owner, values):
+            loc[where] += 1
+        return loc
 
     def last_receipt(self) -> dict | None:
         return self.receipts[-1] if self.receipts else None

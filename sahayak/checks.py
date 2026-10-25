@@ -16,6 +16,11 @@ stored. The checks, matching the deck and the team's idea list:
   hash_chain    Tamper-evident write log (each record chains the previous hash).
   quarantine    Tripwire: untrusted text written as a COMMAND ("ignore previous...",
                 "forward X to Y") is never stored as an actionable belief.
+  entity_erasure  (v3) Verified Erasure: "forget my name" erases the VALUE ("Teja") from
+                every memory, chat turn, summary and log it appears in - including stories
+                that never say the word "name" - and re-scans to prove zero residue.
+  tombstone     (v3) a salted hash of every erased value; later writes, retrievals and
+                replies are checked against it, so the value cannot be re-learned.
 
 Modes (what `enabled` turns on)
   off       no checks (the planted bugs are live)
@@ -49,7 +54,10 @@ INTERNAL_TYPES = {"conversation", "summary", "document"}
 
 # All sub-checks that can be toggled for ablation.
 ALL_CHECKS = ("authority", "walls", "action_gate", "hard_delete", "source_count",
-              "lineage_trust", "slow_poison", "hash_chain", "quarantine")
+              "lineage_trust", "slow_poison", "hash_chain", "quarantine",
+              "entity_erasure", "tombstone")
+# Memory Checks v2 (before the entangled-deletion finding) = v3 without these two.
+V3_CHECKS = ("entity_erasure", "tombstone")
 
 # A memory written as a COMMAND to the agent, rather than as a fact about the world.
 # (Exfiltration / injection phrasings; benign "please note my code is ..." does NOT match.)
@@ -98,10 +106,13 @@ class MemoryChecks:
     # ------------------------------------------------------------------ construction
     @classmethod
     def from_spec(cls, spec) -> "MemoryChecks":
-        """Parse a mode spec. Examples: 'off', 'on', 'paranoid', 'on:-walls,-slow_poison'."""
+        """Parse a mode spec. Examples: 'off', 'on', 'paranoid', 'on:-walls,-slow_poison'.
+        'v2' = the defence as it was before Verified Erasure (on:-entity_erasure,-tombstone)."""
         if isinstance(spec, MemoryChecks):
             return spec
         spec = str(spec).strip()
+        if spec == "v2":
+            return cls("on", set(V3_CHECKS))
         if ":" in spec:
             mode, rest = spec.split(":", 1)
             disabled = {tok.strip().lstrip("-") for tok in rest.split(",") if tok.strip()}
@@ -110,6 +121,8 @@ class MemoryChecks:
 
     @property
     def label(self) -> str:
+        if self.mode == "on" and self.disabled == set(V3_CHECKS):
+            return "v2"
         base = self.mode
         if self.disabled:
             base += " (no " + ",".join(sorted(self.disabled)) + ")"
@@ -212,12 +225,16 @@ class MemoryChecks:
 
     # ------------------------------------------------------------------ hash chain
     def append_chain(self, payload: str) -> str:
-        """Append a tamper-evident record; returns the new head hash."""
+        """Append a tamper-evident record; returns the new head hash.
+
+        The chain stores a DIGEST of each record, never its text: a tamper-evident log that
+        kept plaintext would itself be a copy of everything a citizen later asks to erase
+        (AntiGOAT's residue scan flagged exactly that in our v2 chain)."""
         if not self.feature("hash_chain"):
             return ""
         with self._lock:
             prev = self.chain[-1]["hash"] if self.chain else "genesis"
-            payload = payload[:160]
+            payload = "sha256:" + hashlib.sha256(payload.encode()).hexdigest()[:32]
             h = hashlib.sha256((prev + "|" + payload).encode()).hexdigest()
             self.chain.append({"prev": prev, "payload": payload, "hash": h})
             return h

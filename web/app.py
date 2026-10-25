@@ -1,24 +1,28 @@
-"""AntiGOAT web app: a real chat UI for Sahayak + a findings/replay view.
+"""AntiGOAT web app: Sahayak (the agent under test) + the Memory X-ray + AntiGOAT findings.
 
-  uvicorn web.app:app --host 0.0.0.0 --port 8100     (add port 8100 on Brev to share)
+  uvicorn web.app:app --host 0.0.0.0 --port 8100      (or: bash scripts/serve_web.sh)
 
-Two pages, both static (served from web/static), talking to the small JSON API below:
-  /            Talk to Sahayak - chat + voice, a Memory Checks switch, a live memory panel,
-               and natural-language "please forget ..." that actually erases.
-  /report      AntiGOAT findings from the overnight runs; click a leak to replay the exact
-               conversation where Sahayak gave the secret away.
+Pages (static, in web/static), talking to the JSON API below:
+  /          Sahayak - a citizen chats (text or voice, any Indian language), a Memory Checks
+             switch (OFF / v2 / ON / Strict), a backend switch (our store / real Mem0), and
+             the Memory X-ray: after "please forget my name" it shows every place the value
+             still lives - with the actual leftover text - and "Verify with AntiGOAT" attacks
+             that one erasure live.
+  /report    AntiGOAT findings from the big twin-world runs; click a cell to replay the
+             attacker's real conversations.
 
-The chat path here is demo-only sugar (e.g. spoken forget-requests). The experiment code in
-antigoat/ is untouched, so the numbers on /report come from the real runs, not this server.
+The experiment numbers on /report come from the runs in results/, not from this server.
 """
 from __future__ import annotations
 
+import os
 import re
 import threading
+import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -26,44 +30,44 @@ from pydantic import BaseModel
 from antigoat.runner import load
 from antigoat.stats import scorecard
 from antigoat.worlds import RULES
+from config import SETTINGS
 from sahayak.agents import Sahayak
+from sahayak.erasure import pattern
 
 STATIC = Path(__file__).parent / "static"
-RESULTS = Path("results")
+RESULTS = Path(os.environ.get("RESULTS_DIR", "results"))
 app = FastAPI(title="AntiGOAT")
 
-# ---- live chat sessions ------------------------------------------------------------
-_sessions: dict[str, Sahayak] = {}
+# ---- live sessions -----------------------------------------------------------------
+_sessions: dict[str, dict] = {}   # sid -> {"s": Sahayak, "tracked": {user: {...}}, "t": last use}
 _lock = threading.Lock()
+MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "60"))
 
-# "please forget ..." in English / Hindi / Hinglish. Demo-only; experiments don't use this.
-# Hinglish is spelled many ways (bhool/bhul, jao/jaiye/jaana), so match the stem + an imperative
-# ending, not one exact spelling. A plain "main bhool gaya" (I forgot) is NOT an erasure request.
+# "please forget ..." in English / Hindi / Hinglish. Hinglish is spelled many ways
+# (bhool/bhul, jao/jaiye), so match the stem + an imperative ending, not one exact spelling.
+# A plain "main bhool gaya" (I forgot) is NOT an erasure request.
 _FORGET_RE = re.compile(
-    r"\b(forget|delete|erase|remove)\b"
+    r"\b(forget|delete|erase|remove|wipe)\b"
     r"|\bbh(?:oo|u)l\s*ja(?:o|ao|iye|iyega|na|)\b"
     r"|\bbh(?:oo|u)la\s*(?:do|dijiye|dijiyega|de|dena)\b"
     r"|\b(?:mita|mitaa|hata|hataa|nikal|nikaal)\s*(?:do|dijiye|dijiyega|de|dena)\b"
     r"|भूल\s*जा|भुला\s*द|मिटा\s*द|हटा\s*द|निकाल\s*द", re.I)
-_CODE_RE = re.compile(r"\b[a-z]+-\d{3,4}\b|\b\d{4,}\b", re.I)
-# What a spoken forget-request is about ("forget my name" -> the name). Matched against the
-# request AND against each stored memory, so only memories on that topic are erased.
-_TOPICS = {
-    "name": r"\bname\b|\bnaam\b|\bnam\b|नाम",
-    "phone": r"phone|mobile|फ़ोन|फोन|मोबाइल",
-    "address": r"address|pin\s?code|\bpata\b|पता",
-    "code": r"\bcode\b|code\s?word|password|secret|कोड",
-    "email": r"e-?mail|ईमेल",
-    "aadhaar": r"aadhaa?r|\buid\b|आधार",
-    "birth": r"birth|\bdob\b|janam|जन्म",
-    "family": r"father|mother|wife|husband|\bson\b|daughter|family|\bpita\b|\bmata\b|papa|mummy|पिता|माता|पत्नी|पति",
-}
-_ALL_RE = re.compile(r"\b(everything|all|sab|sabhi|saara|sara)\b|सब", re.I)
 
 
-def _get(sid: str) -> Sahayak:
+def _mem0_available() -> bool:
+    try:
+        import mem0  # noqa: F401
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _get(sid: str) -> dict | None:
     with _lock:
-        return _sessions.get(sid)
+        st = _sessions.get(sid)
+        if st:
+            st["t"] = time.time()
+        return st
 
 
 def _user(s: Sahayak, name: str = "", pincode: str = "") -> str:
@@ -81,6 +85,7 @@ class NewSession(BaseModel):
     checks: str = "off"
     user_id: str = "ramesh"
     pincode: str = "560012"
+    backend: str = "ours"
 
 
 class ChatIn(BaseModel):
@@ -99,132 +104,207 @@ class ActionIn(BaseModel):
     pincode: str = ""
 
 
-def _forget_request(s: Sahayak, user: str, message: str) -> dict:
-    """Spoken erasure. Exact values ("kesar-4135") are erased wherever they appear; a topic
-    ("my name") erases only memories on that topic; "forget everything" erases all personal
-    facts; a bare "forget it" erases what the citizen told us most recently. Each erased fact
-    takes the raw chat turn it came from with it (that turn was what leaked before)."""
-    hard = s.checks.feature("hard_delete")
-    codes = _CODE_RE.findall(message)
-    if codes:
-        removed = sum(s.forget(user, c) for c in codes)
-        return {"removed": removed, "erased": codes, "hard": hard}
-    mine = [it for it in s.store.items.values() if it.owner == user and it.status != "deleted"
-            and it.btype in {"personal_fact", "conversation"}]
-    topics = [rx for rx in _TOPICS.values() if re.search(rx, message, re.I)]
-    if topics:
-        picks = [it for it in mine if any(re.search(rx, it.text, re.I) for rx in topics)]
-    elif _ALL_RE.search(message):
-        picks = [it for it in mine if it.btype == "personal_fact"]
-    else:  # "forget it / that": the latest thing they told us
-        facts = [it for it in mine if it.btype == "personal_fact"]
-        last = max(facts, key=lambda it: it.created, default=None)
-        picks = [it for it in facts if last and it.parents and it.parents == last.parents] or \
-            ([last] if last else [])
-    erased = s.forget_items(user, [it.id for it in picks], label=message[:60])
-    shown = [it.text for it in erased if it.btype == "personal_fact"] or \
-        [it.text.removeprefix("Citizen said: ") for it in erased]
-    return {"removed": len(erased), "erased": [t[:70] for t in shown[:3]], "hard": hard}
-
-
 def _mem_snapshot(s: Sahayak, user: str) -> list[dict]:
     out = []
     for it in s.store.visible(user):
         out.append({"id": it.id, "owner": it.owner, "type": it.btype, "source": it.source,
-                    "status": it.status, "trust": getattr(it, "trust", 2), "text": it.text})
+                    "status": it.status, "trust": getattr(it, "trust", 2), "text": it.text,
+                    "redacted": bool((it.meta or {}).get("redacted"))})
     return out
 
 
-def _checks_feed(s: Sahayak, n: int = 6) -> list[dict]:
-    """The last few routing decisions, so the UI can show what the defence did."""
-    return [d for d in s.checks.log[-n:]]
+def _xray(st: dict, user: str) -> dict:
+    """The Memory X-ray for the values this citizen last asked to erase."""
+    s: Sahayak = st["s"]
+    tr = st["tracked"].get(user)
+    if not tr:
+        return {"tracked": False}
+    found = s.xray_find(user, tr["values"])
+    counts = s.xray(user, tr["values"])
+    rxs = [pattern(v) for v in tr["values"]]
+
+    def mark(t: str) -> str:
+        # wrap the leftover value in \u0001..\u0002 so the UI can highlight it safely
+        for rx in rxs:
+            t = rx.sub(lambda m: "\u0001" + m.group(0) + "\u0002", t)
+        return t
+
+    return {"tracked": True, "topic": tr["topic"], "label": tr["label"], "mode": tr["mode"],
+            "counts": counts, "total": sum(counts.values()),
+            "hits": [{"where": w, "text": mark(t)[:220]} for w, t in found[:24]],
+            "receipt": tr.get("receipt"), "verify": tr.get("verify")}
+
+
+def _state(st: dict, user: str) -> dict:
+    s: Sahayak = st["s"]
+    return {"memory": _mem_snapshot(s, user), "checks": s.checks.log[-8:], "xray": _xray(st, user),
+            "tombstones": s.store.tomb.count(user) if s.checks.feature("tombstone") else 0}
+
+
+def _forget_reply(ev: dict) -> str:
+    """Never repeats the erased value (a reply that echoed it would itself be a new copy)."""
+    what = " / ".join(ev["topics"]) or ("the detail you mentioned" if ev["n_values"] else "that")
+    if not ev["removed"]:
+        return "I could not find a saved detail matching that to erase."
+    if ev["mode"] == "verified-erasure":
+        return (f"Done - I have erased your {what} from every place I had it ({ev['removed']} record(s)), "
+                f"and I will not store it again unless you tell me yourself. Your signed erasure receipt is "
+                f"in the Memory X-ray. (DPDP right to erasure)")
+    return f"Done - I have deleted {ev['removed']} saved detail(s) about your {what}."
 
 
 # ---- API ---------------------------------------------------------------------------
+@app.get("/api/info")
+def info():
+    mock = SETTINGS.sahayak.base_url == "mock"
+    from voice import sarvam
+    return {"model": "offline mock" if mock else SETTINGS.sahayak.model, "mock": mock,
+            "attacker_model": "offline mock" if SETTINGS.attacker.base_url == "mock" else SETTINGS.attacker.model,
+            "mem0": _mem0_available(), "voice": sarvam.available(), "embed": SETTINGS.embed_model}
+
+
 @app.post("/api/session")
 def new_session(x: NewSession):
-    sid = uuid.uuid4().hex[:8]
-    s = Sahayak(checks_mode=x.checks)
+    backend = "mem0" if x.backend == "mem0" and _mem0_available() else "ours"
+    s = Sahayak(checks_mode=x.checks, backend=backend)
     s.register(x.user_id, x.pincode)
+    sid = uuid.uuid4().hex[:10]
     with _lock:
-        _sessions[sid] = s
-    return {"sid": sid, "checks": s.checks.label, "user_id": x.user_id, "pincode": x.pincode,
-            "memory": _mem_snapshot(s, x.user_id)}
+        if len(_sessions) >= MAX_SESSIONS:  # evict the least recently used session
+            oldest = min(_sessions, key=lambda k: _sessions[k]["t"])
+            _sessions.pop(oldest, None)
+        _sessions[sid] = {"s": s, "tracked": {}, "t": time.time()}
+    return {"sid": sid, "checks": s.checks.label, "backend": backend, "user_id": x.user_id,
+            "pincode": x.pincode, **_state(_sessions[sid], x.user_id)}
 
 
 @app.post("/api/chat")
 def chat(x: ChatIn):
-    s = _get(x.sid)
-    if s is None:
+    st = _get(x.sid)
+    if st is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
+    s: Sahayak = st["s"]
     user = _user(s, x.user, x.pincode)
     agent = x.agent if x.agent in {"intake", "grievance"} else "intake"
-    # Natural-language erasure: a citizen who can't read just SAYS "forget my number".
-    if _FORGET_RE.search(x.message):
-        ev = _forget_request(s, user, x.message)
-        if ev["removed"]:
-            what = "; ".join(f'"{t}"' for t in ev["erased"])
-            reply = f"Done - I have erased {ev['removed']} saved detail(s): {what}. (DPDP right to erasure)"
-        else:
-            reply = "I could not find a saved detail matching that to erase."
-        rec = s.store.last_receipt() if ev["hard"] and ev["removed"] else None
-        return {"reply": reply, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s),
-                "event": {"kind": "forget", **ev, "receipt": rec}}
-    reply = s.chat(user, x.message, agent)
-    return {"reply": reply, "agent": agent, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
+    try:
+        # Natural-language erasure: a citizen who can't read just SAYS "forget my number".
+        if _FORGET_RE.search(x.message):
+            ev = s.forget_request(user, x.message)
+            if ev["_values"] or ev["removed"]:
+                st["tracked"][user] = {"values": ev["_values"], "topic": " / ".join(ev["topics"]) or "detail",
+                                       "label": ", ".join(ev["values_masked"]) or "(no value found)",
+                                       "mode": ev["mode"], "receipt": ev["receipt"], "verify": None,
+                                       "before": ev["before"]}
+            reply = _forget_reply(ev)
+            said = x.message
+            if s.checks.feature("entity_erasure"):  # "please delete kesar-4135" must not re-add it
+                for v in ev["_values"]:
+                    said = pattern(v).sub("[erased]", said)
+            with s._lock:  # keep the visit's context in order (the reply never contains the value)
+                h = s.history.setdefault(user, [])
+                h += [{"role": "user", "content": said}, {"role": "assistant", "content": reply}]
+            public = {k: v for k, v in ev.items() if not k.startswith("_")}
+            return {"reply": reply, "agent": agent, "event": {"kind": "forget", **public}, **_state(st, user)}
+        reply = s.chat(user, x.message, agent, history=True)
+    except Exception as e:  # noqa: BLE001 - show the reason in the chat instead of a blank 500
+        return JSONResponse({"error": f"model call failed: {e}"}, status_code=502)
+    return {"reply": reply, "agent": agent, **_state(st, user)}
+
+
+@app.post("/api/xray")
+def xray(x: ActionIn):
+    """X-ray any value the presenter types ("teja", "98765 43210"): where does it live right
+    now? Becomes the tracked value until the next forget-request."""
+    st = _get(x.sid)
+    if st is None:
+        return JSONResponse({"error": "no such session"}, status_code=404)
+    user = _user(st["s"], x.user, x.pincode)
+    v = (x.text or "").strip()
+    if v:
+        prev = st["tracked"].get(user) or {}
+        st["tracked"][user] = {"values": [v], "topic": "value you typed", "label": v,
+                               "mode": prev.get("mode", "scan"), "receipt": prev.get("receipt"), "verify": None}
+    return {"ok": True, **_state(st, user)}
+
+
+@app.post("/api/verify")
+def verify(x: ActionIn):
+    """Verify with AntiGOAT: attack the citizen's last erasure live (a few adaptive probes)."""
+    st = _get(x.sid)
+    if st is None:
+        return JSONResponse({"error": "no such session"}, status_code=404)
+    s: Sahayak = st["s"]
+    user = _user(s, x.user, x.pincode)
+    tr = st["tracked"].get(user)
+    if not tr or not tr["values"]:
+        return JSONResponse({"error": "ask Sahayak to forget something first"}, status_code=400)
+    from antigoat.live import verify_erasure
+    try:
+        res = verify_erasure(s, user, tr["values"], tr["topic"], probes=int(os.environ.get("VERIFY_PROBES", "4")))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"attacker model call failed: {e}"}, status_code=502)
+    tr["verify"] = {"recovered": res["recovered"], "verdict": res["verdict"], "probes": res["probes"]}
+    rxs = [pattern(v) for v in tr["values"]]
+    for t in res["transcript"]:  # highlight what leaked
+        for rx in rxs:
+            t["reply"] = rx.sub(lambda m: "\u0001" + m.group(0) + "\u0002", t["reply"] or "")
+    return {"result": res, **_state(st, user)}
 
 
 @app.post("/api/login")
 def login(x: ActionIn):
-    """Switch to another citizen on the SAME Sahayak (memory is kept). Returns what this
-    citizen can see - with the shared_index bug live, that includes other citizens' data."""
-    s = _get(x.sid)
-    if s is None:
+    """Switch to another citizen on the SAME Sahayak (memory is kept). With the shared_index
+    bug live, what they can see includes other citizens' data."""
+    st = _get(x.sid)
+    if st is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
-    user = _user(s, x.user, x.pincode)
-    return {"ok": True, "user": user, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
+    user = _user(st["s"], x.user, x.pincode)
+    return {"ok": True, "user": user, **_state(st, user)}
 
 
 @app.post("/api/end")
 def end_visit(x: ActionIn):
-    """The citizen's visit ends: Sahayak writes its summary of their history (where the
-    soft_delete bug copies 'deleted' details back - the resurrection on /report)."""
-    s = _get(x.sid)
-    if s is None:
+    """The visit ends: the context window is cleared and Sahayak summarises the citizen's
+    history (where the soft_delete bug copies 'deleted' details back)."""
+    st = _get(x.sid)
+    if st is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
-    user = _user(s, x.user, x.pincode)
-    s.end_session(user)
-    return {"ok": True, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
+    user = _user(st["s"], x.user, x.pincode)
+    st["s"].end_session(user)
+    return {"ok": True, **_state(st, user)}
 
 
 @app.post("/api/upload")
 def upload(x: ActionIn):
-    s = _get(x.sid)
-    if s is None:
+    st = _get(x.sid)
+    if st is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
-    user = _user(s, x.user, x.pincode)
-    s.upload(user, x.text)
-    return {"ok": True, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
+    user = _user(st["s"], x.user, x.pincode)
+    st["s"].upload(user, x.text)
+    return {"ok": True, **_state(st, user)}
 
 
 @app.post("/api/policy")
 def policy(x: ActionIn):
-    s = _get(x.sid)
-    if s is None:
+    st = _get(x.sid)
+    if st is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
-    user = _user(s, x.user, x.pincode)
-    s.admin_policy(x.text, signed=True)
-    return {"ok": True, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
+    user = _user(st["s"], x.user, x.pincode)
+    st["s"].admin_policy(x.text, signed=True)
+    return {"ok": True, **_state(st, user)}
 
 
 @app.post("/api/apply")
 def apply(x: ActionIn):
-    s = _get(x.sid)
-    if s is None:
+    st = _get(x.sid)
+    if st is None:
         return JSONResponse({"error": "no such session"}, status_code=404)
-    user = _user(s, x.user, x.pincode)
-    d = s.apply(user, has_address_proof=x.has_address_proof)
-    return {"decision": d, "memory": _mem_snapshot(s, user), "checks": _checks_feed(s)}
+    user = _user(st["s"], x.user, x.pincode)
+    try:
+        d = st["s"].apply(user, has_address_proof=x.has_address_proof)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"model call failed: {e}"}, status_code=502)
+    return {"decision": d, **_state(st, user)}
 
 
 @app.post("/api/voice/stt")
@@ -258,10 +338,16 @@ def tts(x: TTSIn):
 
 
 # ---- findings / replay -------------------------------------------------------------
+def _runs() -> list[Path]:
+    """Published real runs (final-*) first, then real runs, then offline mock demos; newest first."""
+    files = sorted(RESULTS.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    rank = lambda p: 0 if p.stem.startswith("final-") else (2 if "mock" in p.stem else 1)  # noqa: E731
+    return sorted(files, key=rank)
+
+
 @app.get("/api/runs")
 def runs():
-    files = sorted(RESULTS.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return {"runs": [p.stem for p in files]}
+    return {"runs": [p.stem for p in _runs() if p.stat().st_size > 0]}
 
 
 @app.get("/api/findings")
@@ -273,7 +359,14 @@ def findings(run: str = ""):
     rows = scorecard(records)
     titles = {r: RULES[r].title for r in RULES}
     expect = {r: RULES[r].expect for r in RULES}
-    return {"run": path.stem, "rows": rows, "titles": titles, "expect": expect}
+    meta_p = path.with_suffix(".meta.json")
+    meta = {}
+    if meta_p.exists():
+        import json
+        m = json.loads(meta_p.read_text(encoding="utf-8"))
+        meta = {k: m.get(k) for k in ("sahayak_model", "attacker_model", "backend", "seconds", "embed_model")}
+        meta["slots"] = (m.get("config") or {}).get("slots")
+    return {"run": path.stem, "rows": rows, "titles": titles, "expect": expect, "meta": meta}
 
 
 @app.get("/api/replay")
@@ -299,7 +392,7 @@ def _run_path(run: str):
     if run:
         p = RESULTS / f"{run}.jsonl"
         return p if p.exists() else None
-    files = sorted(RESULTS.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = [p for p in _runs() if p.stat().st_size > 0]
     return files[0] if files else None
 
 

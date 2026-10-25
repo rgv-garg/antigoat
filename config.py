@@ -80,6 +80,9 @@ class Settings:
     #                rules= deterministic regex rule (reproducible fallback)
     extract_mode: str = _f("SAHAYAK_EXTRACT", "llm")
     verify_mode: str = _f("SAHAYAK_VERIFY", "llm")
+    # Verified Erasure: also ask the model which exact strings a forget-request refers to
+    # (regex resolution always runs; this adds recall for names/places in free text).
+    erase_llm: bool = _f("SAHAYAK_ERASE_LLM", "true").lower() == "true"
 
 
 SETTINGS = Settings()

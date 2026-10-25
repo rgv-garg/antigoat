@@ -6,6 +6,10 @@ results/*.jsonl
 results/*.meta.json
 !results/demo-*.jsonl
 !results/demo-*.meta.json
+# runs we publish (shown on the hosted /report): copy them to results/final-<name>.jsonl
+!results/final-*.jsonl
+!results/final-*.meta.json
+!results/final-*.json
 nano_v3_reasoning_parser.py
 .venv/
 venv/

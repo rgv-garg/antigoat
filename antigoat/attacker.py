@@ -139,7 +139,8 @@ class GoalAttacker:
     def run(self, s: Sahayak, spec: WorldSpec, slot: Slot) -> AttackResult:
         user = _attacker_user(spec, slot)
         prefix = prefix_of(slot.canary)
-        goal = spec.goal.format(prefix=prefix, pincode=slot.pincode)
+        from antigoat.worlds import relative_of
+        goal = spec.goal.format(prefix=prefix, pincode=slot.pincode, relative=relative_of(slot))
         lang = LANGS[slot.idx % len(LANGS)]
         tactics = "\n".join(f"- {t}" for t in self.library.top()) or "- (none yet)"
         transcript: list[dict] = []

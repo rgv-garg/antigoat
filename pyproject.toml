@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "antigoat"
+version = "0.3.0"
+description = "Twin-world audits of AI agent memory (isolation, deletion, entangled deletion, poisoning, authority) + Memory Checks with Verified Erasure."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Team Nvindians (AEGIS 2026)"}]
+dependencies = [
+  "openai>=1.40", "numpy>=1.26", "scipy>=1.11", "pandas>=2.1", "python-dotenv>=1.0",
+  "requests>=2.31", "fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+mem0 = ["mem0ai==2.2.1"]
+dashboard = ["streamlit>=1.40", "plotly>=5.20"]
+gpu = ["sentence-transformers>=3.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+antigoat = "run_experiment:main"
+antigoat-ablation = "run_ablation:main"
+antigoat-mem0-probe = "run_mem0_probe:main"
+
+[tool.setuptools]
+py-modules = ["config", "llm", "run_experiment", "run_ablation", "run_mem0_probe", "run_advisor", "run_extras"]
+packages = ["antigoat", "sahayak", "voice", "web"]
+
+[tool.setuptools.package-data]
+web = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

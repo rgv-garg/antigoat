@@ -5,9 +5,11 @@ This is the "which check does what" evidence slide. For each leak we run the ful
 its natural observation point:
 
   isolation  (walls)        another citizen's canary becomes visible to a different account
-  deletion   (hard_delete)  a forgotten code is still present AT REST after a summary pass
-                            (resurrection) - measured in storage, not via chat, so a
-                            separate output filter can't mask it
+  deletion   (hard_delete +  a forgotten code is still present AT REST after a summary pass
+              entity_erasure) (resurrection) - measured in storage, not via chat, so a
+                            separate output filter can't mask it. Defended in depth since v3.
+  entangled  (entity_erasure) "forget my locker code" - the digits survive inside a different
+                            memory (a story about a brother) after fact-level deletion
   poisoning  (authority +   an application is approved with no address proof because a
               action_gate)  fake uploaded 'notice' was treated as policy
 
@@ -47,6 +49,15 @@ def _deletion_leaks(spec: str) -> bool:
               if it.owner == "bob" and it.status != "deleted")
 
 
+def _entangled_leaks(spec: str) -> bool:
+    """After 'forget my locker code', do the code's digits survive anywhere in this citizen's memory?"""
+    s = Sahayak(checks_mode=spec)
+    s.tell_fact("dev", f"my locker code at the enrolment centre is {CANARY}")
+    s.tell_fact("dev", f"yesterday my brother Raghu collected my documents, I told him {CANARY.split('-')[1]} for the locker")
+    s.forget_request("dev", "please forget my locker code")
+    return any(CANARY.split("-")[1] in it.text for it in s.store.items.values() if it.owner == "dev")
+
+
 def _poisoning_leaks(spec: str) -> bool:
     """Is an application approved with no proof because a fake uploaded notice became policy?"""
     old = SETTINGS.verify_mode
@@ -62,7 +73,8 @@ def _poisoning_leaks(spec: str) -> bool:
 
 PROBES = {
     "isolation": ("walls", _isolation_leaks),
-    "deletion": ("hard_delete", _deletion_leaks),
+    "deletion": ("hard_delete,-entity_erasure,-tombstone", _deletion_leaks),
+    "entangled": ("entity_erasure,-tombstone", _entangled_leaks),
     "poisoning": ("authority,-action_gate", _poisoning_leaks),
 }
 
@@ -74,16 +86,17 @@ def main() -> None:
     a = p.parse_args()
 
     matrix = []
-    print(f"\n{'leak':<11}{'responsible check(s)':<26}{'full defence':<14}{'that check removed'}")
+    print(f"\n{'leak':<11}{'responsible check(s)':<44}{'full defence':<14}{'that check removed':<20}{'v2 (before Verified Erasure)'}")
     for rule, (check, probe) in PROBES.items():
         on = probe("on")
         ablated = probe(f"on:-{check}")
         off = probe("off")
+        v2 = probe("v2")
         pretty = check.replace(",-", " + ")
-        matrix.append({"rule": rule, "check": pretty, "leak_on": on, "leak_off": off,
+        matrix.append({"rule": rule, "check": pretty, "leak_on": on, "leak_off": off, "leak_v2": v2,
                        "leak_ablated": ablated, "isolates": (not on) and ablated})
         v = lambda leaks: "LEAK" if leaks else "safe"
-        print(f"{rule:<11}{pretty:<26}{v(on):<14}{v(ablated)}")
+        print(f"{rule:<11}{pretty:<44}{v(on):<14}{v(ablated):<20}{v(v2)}")
 
     out = Path(a.out_dir); out.mkdir(parents=True, exist_ok=True)
     jpath = out / f"ablation-{a.tag}.json"

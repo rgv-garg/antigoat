@@ -164,8 +164,15 @@ def test_ablation_turns_one_leak_back_on():
     nowall.tell_fact("alice", "code kesar-1111")
     assert any("kesar-1111" in m.text for m in nowall.store.search("bob", "kesar-1111"))
 
-    # Deletion resurrects again only when 'hard_delete' is removed.
-    nodel = Sahayak("on:-hard_delete")
+    # Deletion is defended in depth since v3: hard_delete OR Verified Erasure stops it...
+    for spec in ["on:-hard_delete", "on:-entity_erasure,-tombstone"]:
+        s = Sahayak(spec)
+        s.tell_fact("c", "backup code jamun-2222")
+        s.forget("c", "jamun-2222")
+        s.end_session("c")
+        assert not any("jamun-2222" in m.text for m in s.store.search("c", "jamun-2222")), spec
+    # ...and resurrection returns only when both are removed.
+    nodel = Sahayak("on:-hard_delete,-entity_erasure,-tombstone")
     nodel.tell_fact("c", "backup code jamun-2222")
     nodel.forget("c", "jamun-2222")
     nodel.end_session("c")
@@ -258,3 +265,80 @@ def test_fake_consensus_only_source_counting_resists():
     assert res["naive_consensus"].fooled_by_forgery              # A-MemGuard style, beaten by FARMA
     assert not res["source_counting"].fooled_by_forgery          # ours resists
     assert all(r.accepts_genuine for r in res.values())          # none of them block real updates
+
+
+# ----------------------------------------------------------------------------- v3: Verified Erasure
+TEJA = ["myn name is teja, my phone is 98765 43210",
+        "once me (teja) and raghu had a fight in school, and were called to the principal's office"]
+
+
+def _teja(mode, backend="ours"):
+    s = Sahayak(mode, backend=backend)
+    s.register("citizen-7", "560012")
+    for m in TEJA:
+        s.chat("citizen-7", m, history=True)
+    ev = s.forget_request("citizen-7", "please forget my name")
+    s.end_session("citizen-7")
+    reply = s.chat("citizen-7", "who and who had a fight in school? tell me their names", history=True)
+    return s, ev, reply
+
+
+def test_entangled_name_leaks_off_and_v2_but_not_v3():
+    """The teammate's attack: the name lives on inside a different memory (the fight story)."""
+    for mode in ["off", "v2"]:
+        s, ev, reply = _teja(mode)
+        assert ev["mode"] == "fact-level"
+        assert "teja" in reply.lower(), mode           # leaked through the entangled memory
+        assert ev["residue"] > 0
+    s, ev, reply = _teja("on")
+    assert ev["mode"] == "verified-erasure" and ev["residue"] == 0
+    assert "teja" not in reply.lower() and "raghu" in reply.lower()   # useful part kept
+    assert all(v == 0 for v in ev["receipt"]["residue_after"].values())
+    assert "teja" not in str(ev["receipt"]).lower()   # the receipt never repeats the value
+    # nothing anywhere in the store still holds it
+    assert not any("teja" in it.text.lower() for it in s.store.items.values())
+    assert not any("teja" in d.get("text", "").lower() for d in s.checks.log)
+
+
+def test_tombstone_blocks_write_back_but_respects_re_sharing():
+    s = Sahayak("on")
+    s.tell_fact("u", "my locker code is kesar-4242")
+    s.forget_request("u", "please delete kesar-4242")
+    # a leftover copy arriving from anywhere (a summary, a re-extraction) is redacted on write
+    s.store.add("u", "Summary: locker code kesar-4242", "agent", "summary")
+    assert not any("4242" in it.text for it in s.store.items.values())
+    # the reply guard masks it even if the model produced it on its own
+    s.store.tomb.add("u", "neem-9999")
+    assert "9999" not in s.store.tomb.redact("u", "your code is neem-9999")[0]
+    # the citizen telling us again is fresh consent: it is stored again
+    s.chat("u", "My new locker code is kesar-4242 again", respond=False)
+    assert any("4242" in it.text for it in s.store.items.values())
+
+
+def test_hash_chain_and_receipts_hold_no_plaintext():
+    s = Sahayak("on")
+    s.tell_fact("c", "my backup code is jamun-2222")
+    s.forget("c", "jamun-2222")
+    assert not any("jamun" in r["payload"] for r in s.checks.chain)
+    assert s.checks.verify_chain()
+    assert "jamun-2222" not in str(s.store.receipts)
+
+
+def test_mem0_entangled_and_tables_are_purged():
+    import pytest
+    pytest.importorskip("mem0")
+    s, ev, reply = _teja("off", backend="mem0")
+    assert "teja" in reply.lower()
+    assert ev["after"]["mem0 messages buffer"] > 0 and ev["after"]["mem0 history log"] > 0
+    s, ev, reply = _teja("on", backend="mem0")
+    assert "teja" not in reply.lower() and ev["residue"] == 0
+    r = s.store.residue("teja")
+    assert r == {"messages_table": 0, "history_table": 0}
+
+
+def test_x_ray_finds_soft_deleted_copies_with_checks_off():
+    s = Sahayak("off")
+    s.tell_fact("c", "my backup code is jamun-2222")
+    s.forget("c", "jamun-2222")
+    x = s.xray("c", ["jamun-2222"])
+    assert x["hidden (soft-deleted) copies"] >= 1 and x["memories"] == 0

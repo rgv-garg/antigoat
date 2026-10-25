@@ -1,0 +1,26 @@
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-mem0.txt
+      # the offline mock LLM: no GPU, no key. Every rule, every mode, plus real Mem0 2.2.1.
+      - run: pytest -q
+        env:
+          LLM_BASE_URL: mock
+          EMBED_MODEL: hash
+          MEM0_TELEMETRY: "False"
+      - name: ablation (which check stops which leak)
+        run: python run_ablation.py --tag ci
+        env: {LLM_BASE_URL: mock, EMBED_MODEL: hash}
+      - name: Mem0 deletion-at-rest probe
+        run: python run_mem0_probe.py --n 10 --tag ci
+        env: {LLM_BASE_URL: mock, EMBED_MODEL: hash, MEM0_TELEMETRY: "False"}

@@ -24,7 +24,7 @@ def main() -> None:
     p.add_argument("--rules", default=",".join(RULES), help="comma list: " + ",".join(RULES))
     p.add_argument("--slots", type=int, default=100, help="slots (synthetic citizens) per rule")
     p.add_argument("--sessions", default="0,1,5,10", help="checkpoints, e.g. 0,1,5,10")
-    p.add_argument("--checks", default="off,on", help="Memory Checks modes: off,on,paranoid")
+    p.add_argument("--checks", default="off,on", help="Memory Checks modes: off,v2,on,paranoid (v2 = before Verified Erasure)")
     p.add_argument("--attackers", default="goal", help="goal,fixed")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--learn-frac", type=float, default=0.2)

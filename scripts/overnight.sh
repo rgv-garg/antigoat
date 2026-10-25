@@ -22,18 +22,20 @@ run () {  # run <name> <args...>
   if python "$@"; then echo "<<< [$name] OK"; else echo "<<< [$name] FAILED (continuing)"; fi
 }
 
-# 1) The headline twin-world sweep: 200 citizens/rule, all checkpoints, OFF vs ON vs paranoid,
-#    goal attacker + fixed-list baseline.
+# 1) The headline twin-world sweep: 200 citizens per rule, all five rules (incl. the new
+#    entangled-deletion rule), every checkpoint, OFF vs v2 (before Verified Erasure) vs ON vs
+#    Strict, goal attacker + fixed-list baseline.
 run main   run_experiment.py --slots 200 --sessions 0,1,5,10 \
-           --checks off,on,paranoid --attackers goal,fixed --tag full
+           --checks off,v2,on,paranoid --attackers goal,fixed --tag full
 
 # 2) False-alarm calibration: a CLEAN system (no planted bugs) should be flagged ~1% of the time.
 run calib  run_experiment.py --no-bugs --checks off --slots 200 --sessions 0,1 \
            --attackers goal --tag calib
 
-# 3) Real library: Mem0 OSS as shipped (its own extraction). Deletion-at-rest finding.
-run mem0   run_experiment.py --backend mem0 --slots 60 --sessions 0,1,5 \
-           --checks off,on --attackers goal --tag mem0
+# 3) Real library: Mem0 2.2.1 as shipped (its own extraction), nothing planted.
+#    Deletion (resurrection curve) + entangled deletion, OFF vs v2 vs ON.
+run mem0   run_experiment.py --backend mem0 --rules deletion,entangled --slots 80 --sessions 0,1,5,10 \
+           --checks off,v2,on --attackers goal --tag mem0
 
 # 3b) White-box deletion-at-rest probe inside Mem0's own storage (quotable numbers).
 run mem0probe run_mem0_probe.py --n 30 --tag full
@@ -46,6 +48,20 @@ run extras run_extras.py --citizens 25 --tag full
 
 # 6) Autonomous detect -> patch -> re-verify loop (future-scaling demo, deterministic).
 run advisor run_advisor.py --tag full
+
+# 7) Publish: copy the newest run of each kind to results/final-*.jsonl so they can be
+#    committed and shown on the hosted /report page.
+for tag in full calib mem0; do
+  f=$(ls -t results/*-"$tag"-*.jsonl 2>/dev/null | head -1)
+  if [ -n "$f" ]; then
+    cp "$f" "results/final-$tag.jsonl"
+    cp "${f%.jsonl}.meta.json" "results/final-$tag.meta.json" 2>/dev/null || true
+    echo "published $f -> results/final-$tag.jsonl"
+  fi
+done
+for f in results/ablation-full.json results/mem0-probe-full.json results/extras-full.json results/advisor-full.json; do
+  [ -f "$f" ] && cp "$f" "results/final-$(basename "$f")"
+done
 
 echo; echo "================ overnight done $(date) ================"
 echo "Scorecards are in results/*.jsonl ; open the dashboard to view."
