@@ -35,6 +35,21 @@ Then commit the published results so the hosted demo shows them:
 git add results/final-* && git commit -m "Real-model results" && git push
 ```
 
+## Big run on a multi-GPU box (the comfortable way)
+One model server per GPU, and every Memory Checks mode as its own job at the same time. Nothing
+shares a GPU tightly, so no out-of-memory crashes, and 8 GPUs finish ~8x sooner.
+```bash
+git clone https://github.com/rgv-garg/antigoat && cd antigoat
+bash scripts/setup_brev.sh && bash scripts/setup_vllm_latest.sh && source ~/venv/bin/activate
+bash scripts/use_env.sh open
+tmux new -s llm      ->  bash scripts/serve_many.sh     (wait for "All N model servers are up", Ctrl+B, D)
+tmux new -s run      ->  bash scripts/bigrun.sh         (Ctrl+B, D)
+bash scripts/bigrun.sh status     # progress of each job
+bash scripts/bigrun.sh publish    # merge what is finished into results/final-*.jsonl (safe mid-run)
+```
+Sizes: 200 citizens per rule, checkpoints 0, 1, 5, 10 sessions, Mem0 80 citizens per rule
+(`SLOTS=150 SESSIONS=0,1,5 bash scripts/bigrun.sh` for a shorter run).
+
 ## Sanity checks before trusting numbers
 - Checks off: isolation and poisoning should leak clearly. If isolation is near 50%, fix the attacker
   prompt, not the statistics.

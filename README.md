@@ -36,8 +36,8 @@ Mem0 library behaves the same way.
 So we did three things:
 
 1. **Turned the attack into a rule** (`entangled`, in `antigoat/worlds.py`). AntiGOAT now finds this whole
-   class of leak automatically: on the offline mock, our own v2 defence leaks it in 100% of trials, and a
-   fixed list of probes does not notice.
+   class of leak automatically: on the offline mock, our own v2 defence leaks it in 100% of trials, and
+   v3 holds.
 2. **Built Verified Erasure** (`sahayak/erasure.py`), Memory Checks v3:
    - **Resolve** the request to concrete values: “forget my name” becomes “Teja”, checked against the
      citizen's own memory so nothing is invented.
@@ -191,7 +191,8 @@ AntiGOAT is an **audit procedure** for *your deployed agent*. What it adds:
 1. **A hypothesis test with a calibrated false-alarm rate.** Coin-flip twin worlds, adapted from one-run
    privacy auditing (Steinke, Nasr and Jagielski, NeurIPS 2023), give an evidence-based verdict, not a
    judge's opinion.
-2. **An adaptive, multilingual (Indic) attacker** that beats a fixed probe list on side-door and entangled leaks.
+2. **An adaptive, multilingual (Indic) attacker** that beats a fixed probe list on side-door leaks
+   (offline mock, Checks off: isolation 100% vs 43%, deletion 85% vs 45%).
 3. **A “must learn” rule**, so over-cautious defences fail too.
 4. **Entangled deletion** as a measured failure class, with Verified Erasure (receipts that carry residue
    scans, and hashed tombstones) as a fix you can audit.

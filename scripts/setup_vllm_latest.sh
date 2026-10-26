@@ -11,7 +11,7 @@ if [ "${DRV%%.*}" -lt 580 ]; then
   echo "Driver $DRV is too old for the current vLLM (needs >= 580). Create a newer instance instead."
   exit 1
 fi
-sudo apt-get update -y && sudo apt-get install -y tmux python3-venv git
+sudo apt-get update -y && sudo apt-get install -y tmux python3-venv python3-dev build-essential git  # dev headers: vLLM compiles kernels at start
 [ -d ~/vllm-latest ] || python3 -m venv ~/vllm-latest
 ~/vllm-latest/bin/pip install -U pip
 ~/vllm-latest/bin/pip install -U vllm "huggingface_hub[hf_transfer]"

@@ -165,7 +165,7 @@ def _real_model_name(cfg) -> str:
         name = cfg.model
         try:
             import requests
-            r = requests.get(cfg.base_url.rstrip("/") + "/models", timeout=3,
+            r = requests.get(cfg.base_url.split(",")[0].strip().rstrip("/") + "/models", timeout=3,
                              headers={"Authorization": f"Bearer {cfg.api_key}"})
             for m in r.json().get("data", []):
                 if m.get("id") == cfg.model and m.get("root"):
@@ -360,16 +360,77 @@ def tts(x: TTSIn):
 
 
 # ---- findings / replay -------------------------------------------------------------
+MODEL_ALIASES = {"target": "Qwen3-32B-FP8", "nemotron-nano": "Nemotron 3 Nano", "mock": "offline mock model"}
+KINDS = {"calib": "false-alarm check (no planted bugs)", "mem0": "real Mem0 library", "full": "full sweep",
+         "gpu-first": "first real-model run", "first-real": "first real-model run", "mock": "wiring check"}
+
+
+def _load(path: Path) -> list[dict]:
+    """Like antigoat.runner.load, but tolerant: a run that is still writing can end in a half line."""
+    import json
+    out = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+    return out
+
+
+def _clean(x):
+    """Browsers reject NaN in JSON (e.g. a rule with no scored guesses yet)."""
+    import math
+    if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
+        return None
+    if isinstance(x, dict):
+        return {k: _clean(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_clean(v) for v in x]
+    return x
+
+
+def _meta(path: Path) -> dict:
+    import json
+    mp = path.with_suffix(".meta.json")
+    try:
+        return json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
+    except ValueError:
+        return {}
+
+
+def _label(path: Path) -> str:
+    """A human name for a run: model, memory backend, what kind of run, when, and whether it finished."""
+    import time as _t
+    m = _meta(path)
+    stem = path.stem
+    model = MODEL_ALIASES.get(m.get("sahayak_model"), m.get("sahayak_model")) or ("offline mock model" if "mock" in stem else "")
+    backend = "Mem0" if (m.get("backend") == "mem0" or "mem0" in stem) else "Sahayak store"
+    kind = next((v for k, v in KINDS.items() if k in stem), "")
+    when = _t.strftime("%d %b %H:%M", _t.localtime(m["started"])) if m.get("started") else stem[:13]
+    parts = [p for p in (model, backend, kind) if p]
+    status = "" if m.get("finished") else " (still running, or stopped early)"
+    return ", ".join(parts) + f" ({when})" + status
+
+
 def _runs() -> list[Path]:
-    """Published real runs (final-*) first, then real runs, then offline mock demos; newest first."""
-    files = sorted(RESULTS.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    rank = lambda p: 0 if p.stem.startswith("final-") else (2 if "mock" in p.stem else 1)  # noqa: E731
+    """Finished real-model runs first (published final-* on top), then unfinished ones, then mock demos."""
+    files = [p for p in RESULTS.glob("*.jsonl") if p.stat().st_size > 0]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    def rank(p: Path) -> int:
+        if "mock" in p.stem:
+            return 3
+        if not _meta(p).get("finished"):
+            return 2
+        return 0 if p.stem.startswith("final-") else 1
     return sorted(files, key=rank)
 
 
 @app.get("/api/runs")
 def runs():
-    return {"runs": [p.stem for p in _runs() if p.stat().st_size > 0]}
+    files = _runs()
+    return {"runs": [p.stem for p in files], "labels": {p.stem: _label(p) for p in files}}
 
 
 @app.get("/api/findings")
@@ -377,18 +438,16 @@ def findings(run: str = ""):
     path = _run_path(run)
     if path is None:
         return JSONResponse({"error": "no runs found"}, status_code=404)
-    records = load(path)
-    rows = scorecard(records)
+    records = _load(path)
+    rows = scorecard(records) if records else []
     titles = {r: RULES[r].title for r in RULES}
     expect = {r: RULES[r].expect for r in RULES}
-    meta_p = path.with_suffix(".meta.json")
-    meta = {}
-    if meta_p.exists():
-        import json
-        m = json.loads(meta_p.read_text(encoding="utf-8"))
-        meta = {k: m.get(k) for k in ("sahayak_model", "attacker_model", "backend", "seconds", "embed_model")}
-        meta["slots"] = (m.get("config") or {}).get("slots")
-    return {"run": path.stem, "rows": rows, "titles": titles, "expect": expect, "meta": meta}
+    m = _meta(path)
+    meta = {k: m.get(k) for k in ("sahayak_model", "attacker_model", "backend", "seconds", "embed_model")}
+    meta["sahayak_model"] = MODEL_ALIASES.get(meta["sahayak_model"], meta["sahayak_model"])
+    meta["slots"] = (m.get("config") or {}).get("slots")
+    meta["finished"] = bool(m.get("finished"))
+    return _clean({"run": path.stem, "rows": rows, "titles": titles, "expect": expect, "meta": meta})
 
 
 @app.get("/api/replay")
@@ -397,7 +456,7 @@ def replay(run: str, rule: str, checks: str = "off", sessions: int = 0, only_b: 
     if path is None:
         return JSONResponse({"error": "no runs found"}, status_code=404)
     out = []
-    for r in load(path):
+    for r in _load(path):
         if r.get("attacker") == "fixed":
             continue  # show the goal-driven (or decision) attacker, not the fixed-list duplicate
         if r["rule"] == rule and r["checks"] == checks and int(r["sessions"]) == int(sessions):
@@ -414,7 +473,7 @@ def _run_path(run: str):
     if run:
         p = RESULTS / f"{run}.jsonl"
         return p if p.exists() else None
-    files = [p for p in _runs() if p.stat().st_size > 0]
+    files = _runs()
     return files[0] if files else None
 
 

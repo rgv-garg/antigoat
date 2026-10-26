@@ -13,3 +13,6 @@ results/*.meta.json
 nano_v3_reasoning_parser.py
 .venv/
 venv/
+# raw run files copied from the Brev boxes (large; not committed)
+results/nemotron/
+results/qwen/

@@ -6,10 +6,15 @@ Brev. Changing .env is the only switch needed.
 
 If base_url == "mock", a tiny fake LLM answers instead, so the whole pipeline can be run
 and tested on a laptop with no GPU and no API key.
+
+base_url may also list several servers, comma-separated (one vLLM per GPU, scripts/serve_many.sh).
+Each request then goes to the least busy server that is up; a server that stops answering is
+skipped for 30 s, so one crashed GPU does not stop a run.
 """
 from __future__ import annotations
 
 import json
+import random
 import re
 import threading
 import time
@@ -22,6 +27,8 @@ Role = Literal["sahayak", "attacker"]
 _clients: dict[str, object] = {}
 _no_thinking_kwarg: set[str] = set()  # endpoints that rejected chat_template_kwargs
 _lock = threading.Lock()
+_inflight: dict[str, int] = {}   # requests in progress per server
+_down_until: dict[str, float] = {}  # server -> time it may be tried again
 
 # Simple usage counters, shown on the dashboard / printed at the end of a run.
 USAGE = {"sahayak_calls": 0, "attacker_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
@@ -33,15 +40,26 @@ def _cfg(role: Role) -> LLMRole:
     return SETTINGS.sahayak if role == "sahayak" else SETTINGS.attacker
 
 
-def _client(cfg: LLMRole):
-    key = f"{cfg.base_url}|{cfg.api_key}"
+def _pick(base_url: str) -> str:
+    """One server out of a comma-separated list: the least busy one that is up."""
+    urls = [u.strip() for u in base_url.split(",") if u.strip()]
+    if len(urls) == 1:
+        return urls[0]
+    now = time.time()
+    with _lock:
+        up = [u for u in urls if _down_until.get(u, 0.0) <= now] or urls
+        return min(up, key=lambda u: (_inflight.get(u, 0), random.random()))
+
+
+def _client(url: str, api_key: str):
+    key = f"{url}|{api_key}"
     with _lock:
         if key not in _clients:
             from openai import OpenAI
 
             _clients[key] = OpenAI(
-                base_url=cfg.base_url,
-                api_key=cfg.api_key,
+                base_url=url,
+                api_key=api_key,
                 timeout=SETTINGS.request_timeout,
                 max_retries=0,  # we retry ourselves below
             )
@@ -49,15 +67,17 @@ def _client(cfg: LLMRole):
 
 
 def chat(role: Role, messages: list[dict], temperature: float | None = None,
-         max_tokens: int | None = None, seed: int | None = None) -> str:
-    """Send a chat request and return the reply text (reasoning stripped)."""
+         max_tokens: int | None = None, seed: int | None = None, response_format: dict | None = None) -> str:
+    """Send a chat request and return the reply text (reasoning stripped).
+
+    response_format={"type": "json_object"} asks the server for guaranteed-valid JSON (vLLM
+    structured output); dropped automatically if the endpoint does not support it."""
     cfg = _cfg(role)
     with _lock:
         USAGE[f"{role}_calls"] += 1
     if cfg.base_url == "mock":
         return mock_reply(role, messages)
 
-    client = _client(cfg)
     kwargs = dict(
         model=cfg.model,
         messages=messages,
@@ -66,6 +86,8 @@ def chat(role: Role, messages: list[dict], temperature: float | None = None,
     )
     if seed is not None:
         kwargs["seed"] = seed
+    if response_format:
+        kwargs["response_format"] = response_format
     if cfg.base_url not in _no_thinking_kwarg:
         # Nemotron 3: reasoning on/off via the chat template. Ignored by models without it.
         kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": cfg.thinking}}
@@ -73,6 +95,10 @@ def chat(role: Role, messages: list[dict], temperature: float | None = None,
     delay = 2.0
     retried_without_thinking = False
     for attempt in range(6):
+        url = _pick(cfg.base_url)
+        client = _client(url, cfg.api_key)
+        with _lock:
+            _inflight[url] = _inflight.get(url, 0) + 1
         try:
             resp = client.chat.completions.create(**kwargs)
             if resp.usage:
@@ -91,14 +117,23 @@ def chat(role: Role, messages: list[dict], temperature: float | None = None,
             return text
         except Exception as e:  # noqa: BLE001 - we want to retry on anything transient
             msg = str(e)
+            if "response_format" in msg and kwargs.get("response_format"):
+                kwargs.pop("response_format", None)
+                continue
             if "chat_template_kwargs" in msg or ("extra" in msg.lower() and "400" in msg):
                 _no_thinking_kwarg.add(cfg.base_url)
                 kwargs.pop("extra_body", None)
                 continue
+            if type(e).__name__ == "APIConnectionError":  # server not answering: skip it for 30 s
+                with _lock:
+                    _down_until[url] = time.time() + 30
             if attempt == 5:
                 raise
             time.sleep(delay)  # rate limit / server busy: back off
             delay *= 2
+        finally:
+            with _lock:
+                _inflight[url] -= 1
     raise RuntimeError("unreachable")
 
 

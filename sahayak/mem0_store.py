@@ -49,11 +49,30 @@ class _LLMBridge:
 
         if SETTINGS.sahayak.base_url == "mock":
             return _mock_extract(messages)
-        sys_extra = "\nReturn ONLY a JSON object." if response_format else ""
+        # Mem0 parses these replies with json.loads; a reply that is cut off or wrapped in prose is
+        # silently dropped ("Error parsing extraction response"), so Mem0 would store less than it
+        # really does. Ask the server for guaranteed JSON, allow long replies, and keep the object only.
+        wants_json = bool(response_format) or any("json" in str(m.get("content", "")).lower() for m in messages)
         msgs = [dict(m) for m in messages]
-        if msgs and msgs[0]["role"] == "system":
-            msgs[0]["content"] += sys_extra
-        return chat("sahayak", msgs, temperature=0, max_tokens=1024)
+        if wants_json and msgs and msgs[0]["role"] == "system":
+            msgs[0]["content"] += "\nReturn ONLY a JSON object."
+        out = chat("sahayak", msgs, temperature=0, max_tokens=4096,
+                   response_format={"type": "json_object"} if wants_json else None)
+        return _json_only(out) if wants_json else out
+
+
+def _json_only(text: str) -> str:
+    """The first complete JSON object in `text` (drops code fences, prose, a second object)."""
+    import json
+    t = text.replace("```json", "```").replace("```", "")
+    i = t.find("{")
+    if i < 0:
+        return text
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(t[i:])
+        return json.dumps(obj, ensure_ascii=False)
+    except ValueError:
+        return text
 
 
 def _mock_extract(messages) -> str:

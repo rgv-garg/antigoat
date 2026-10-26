@@ -6,16 +6,18 @@
 #   bash scripts/serve_model.sh                      # Qwen3.8-27B
 #   MODEL=google/gemma-4-31B-it bash scripts/serve_model.sh   # another family for the model sweep
 # Settings: --max-model-len 16384 (prompts are short; leaves KV-cache room for many parallel
-# conversations), --gpu-memory-utilization 0.88 (room for bge-m3 embeddings on the same GPU).
+# conversations). GPU_UTIL=0.70 by default: the experiments run bge-m3 embeddings on the SAME
+# GPU, and at 0.88 a 64-thread run hit CUDA out-of-memory. Qwen3-32B-FP8 weights are ~33 GB,
+# so 0.70 (~55 GB) still leaves ~20 GB of KV cache.
 set -euo pipefail
 source ~/vllm-latest/bin/activate
-MODEL="${MODEL:-Qwen/Qwen3.8-27B}"
+MODEL="${MODEL:-Qwen/Qwen3-32B-FP8}"   # Qwen3.8-27B needs a newer vLLM model loader; 32B-FP8 works today
 NAME="${NAME:-target}"
 TP="${TP:-1}"
 exec vllm serve "$MODEL" \
   --served-model-name "$NAME" \
   --tensor-parallel-size "$TP" \
   --max-model-len 16384 \
-  --gpu-memory-utilization 0.88 \
+  --gpu-memory-utilization "${GPU_UTIL:-0.70}" \
   --max-num-seqs 128 \
   --host 0.0.0.0 --port 8000

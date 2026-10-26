@@ -54,9 +54,16 @@ async function load(run){
   const rules = ORDER.filter(rule => rows.some(r => r.rule === rule))
     .concat(Object.keys(DATA.titles).filter(r => !ORDER.includes(r) && rows.some(x => x.rule === r)));
   const m = DATA.meta || {};
+  if(!rows.length){
+    $("#meta").textContent = "";
+    $("#board").innerHTML = `<p class="empty">This run has no scored results yet. It is still running, or it stopped before its first test finished.</p>`;
+    $("#why").innerHTML = ""; $("#replay").hidden = true;
+    return;
+  }
   const n = rows.reduce((a, r) => a + (r.attacker !== "fixed" ? (r.n || 0) : 0), 0);
   $("#meta").textContent = [m.sahayak_model && `Sahayak on ${m.sahayak_model}`, m.backend && `${m.backend === "mem0" ? "Mem0" : "Sahayak store"}`,
-    m.slots && `${m.slots} citizens per test`, `${n.toLocaleString()} scored guesses`].filter(Boolean).join(", ");
+    m.slots && `${m.slots} citizens per test`, `${n.toLocaleString()} scored guesses`,
+    m.finished === false ? "still running: columns appear as each mode finishes" : ""].filter(Boolean).join(", ");
 
   let head = `<tr><th scope="col">Memory rule</th>${modes.map(([, l]) => `<th scope="col">${esc(l)}</th>`).join("")}</tr>`;
   let body = "";
