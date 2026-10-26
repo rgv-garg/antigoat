@@ -154,12 +154,34 @@ def _forget_reply(ev: dict) -> str:
 
 
 # ---- API ---------------------------------------------------------------------------
+_model_names: dict[str, str] = {}
+
+
+def _real_model_name(cfg) -> str:
+    """vLLM is served under a short alias ("target"); show the real model ("Qwen/Qwen3-32B-FP8")."""
+    if cfg.base_url == "mock":
+        return "offline mock"
+    if cfg.base_url not in _model_names:
+        name = cfg.model
+        try:
+            import requests
+            r = requests.get(cfg.base_url.rstrip("/") + "/models", timeout=3,
+                             headers={"Authorization": f"Bearer {cfg.api_key}"})
+            for m in r.json().get("data", []):
+                if m.get("id") == cfg.model and m.get("root"):
+                    name = m["root"]
+        except Exception:  # noqa: BLE001
+            pass
+        _model_names[cfg.base_url] = name
+    return _model_names[cfg.base_url]
+
+
 @app.get("/api/info")
 def info():
     mock = SETTINGS.sahayak.base_url == "mock"
     from voice import sarvam
-    return {"model": "offline mock" if mock else SETTINGS.sahayak.model, "mock": mock,
-            "attacker_model": "offline mock" if SETTINGS.attacker.base_url == "mock" else SETTINGS.attacker.model,
+    return {"model": _real_model_name(SETTINGS.sahayak), "mock": mock,
+            "attacker_model": _real_model_name(SETTINGS.attacker),
             "mem0": _mem0_available(), "voice": sarvam.available(), "embed": SETTINGS.embed_model}
 
 

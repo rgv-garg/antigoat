@@ -2,7 +2,7 @@
 
 **Team Nvindians · AEGIS 2026 (Infosys × IISc × NVIDIA) · PS4: Agent Memory Governance Evaluation**
 
-[![tests](https://github.com/rgv-garg/antiGOAT/actions/workflows/ci.yml/badge.svg)](https://github.com/rgv-garg/antiGOAT/actions/workflows/ci.yml)
+[![tests](https://github.com/rgv-garg/antigoat/actions/workflows/ci.yml/badge.svg)](https://github.com/rgv-garg/antigoat/actions/workflows/ci.yml)
 
 AI agents now keep long-term memory about the people they serve. AntiGOAT is an **auditor** for that
 memory. It checks, with a statistical test rather than a demo, whether an agent:
@@ -131,7 +131,7 @@ check (or checks) brings back exactly one leak.
 ## Quick start (laptop, no GPU, about 2 minutes)
 
 ```bash
-git clone https://github.com/rgv-garg/antiGOAT && cd antiGOAT
+git clone https://github.com/rgv-garg/antigoat && cd antigoat
 pip install -r requirements.txt -r requirements-mem0.txt
 cp .env.example .env                 # the offline mock model is the default
 pytest -q                            # all tests, including real Mem0 2.2.1
