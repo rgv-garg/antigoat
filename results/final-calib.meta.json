@@ -1,0 +1,50 @@
+{
+ "run_id": "final-calib",
+ "parts": [
+  {
+   "tag": "big-calib",
+   "file": "20261026-140623-big-calib-b7a9.jsonl",
+   "guesses": 1500
+  }
+ ],
+ "sahayak_model": "target",
+ "attacker_model": "target",
+ "embed_model": "BAAI/bge-m3",
+ "backend": "ours",
+ "config": {
+  "rules": [
+   "isolation",
+   "deletion",
+   "entangled",
+   "poisoning",
+   "authority"
+  ],
+  "slots": 150,
+  "sessions": [
+   0,
+   1
+  ],
+  "checks": [
+   "off"
+  ],
+  "attackers": [
+   "goal"
+  ],
+  "seed": 42,
+  "learn_frac": 0.2,
+  "turns": 3,
+  "abstain_below": 0.6,
+  "bg_sample": 0.5,
+  "bugs": {
+   "shared_index": false,
+   "soft_delete": false,
+   "doc_as_rule": false,
+   "guardrail_gap": false
+  },
+  "out_dir": "results",
+  "backend": "ours",
+  "tag": "final-calib"
+ },
+ "finished": 1793035013.5712123,
+ "seconds": 2612.0
+}

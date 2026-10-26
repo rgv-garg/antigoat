@@ -1,0 +1,62 @@
+{
+  "blast": {
+    "off": {
+      "checks": "off",
+      "pincode": "560001",
+      "n_citizens": 25,
+      "r0": 24,
+      "patient_zero_approved": true,
+      "wrongly_approved": [
+        "blast-citizen-001",
+        "blast-citizen-002",
+        "blast-citizen-003",
+        "blast-citizen-004",
+        "blast-citizen-005",
+        "blast-citizen-006",
+        "blast-citizen-007",
+        "blast-citizen-008",
+        "blast-citizen-009",
+        "blast-citizen-010",
+        "blast-citizen-011",
+        "blast-citizen-012",
+        "blast-citizen-013",
+        "blast-citizen-014",
+        "blast-citizen-015",
+        "blast-citizen-016",
+        "blast-citizen-017",
+        "blast-citizen-018",
+        "blast-citizen-019",
+        "blast-citizen-020",
+        "blast-citizen-021",
+        "blast-citizen-022",
+        "blast-citizen-023",
+        "blast-citizen-024"
+      ]
+    },
+    "on": {
+      "checks": "on",
+      "pincode": "560001",
+      "n_citizens": 25,
+      "r0": 0,
+      "patient_zero_approved": false,
+      "wrongly_approved": []
+    }
+  },
+  "consensus": [
+    {
+      "defence": "off",
+      "fooled_by_forgery": true,
+      "accepts_genuine": true
+    },
+    {
+      "defence": "naive_consensus",
+      "fooled_by_forgery": true,
+      "accepts_genuine": true
+    },
+    {
+      "defence": "source_counting",
+      "fooled_by_forgery": false,
+      "accepts_genuine": true
+    }
+  ]
+}

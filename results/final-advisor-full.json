@@ -1,0 +1,37 @@
+{
+  "generated": 1793027404.1466534,
+  "steps": [
+    {
+      "leak": "isolation",
+      "detected": true,
+      "advisor_enabled": "walls",
+      "spec": "on:-authority,-action_gate,-hard_delete,-source_count,-lineage_trust,-slow_poison,-hash_chain,-quarantine,-entity_erasure,-tombstone",
+      "leak_after": false,
+      "closed": true
+    },
+    {
+      "leak": "deletion",
+      "detected": true,
+      "advisor_enabled": "entity_erasure + hard_delete + tombstone",
+      "spec": "on:-authority,-walls,-action_gate,-source_count,-lineage_trust,-slow_poison,-hash_chain,-quarantine",
+      "leak_after": false,
+      "closed": true
+    },
+    {
+      "leak": "entangled",
+      "detected": true,
+      "advisor_enabled": "entity_erasure + tombstone",
+      "spec": "on:-authority,-walls,-action_gate,-hard_delete,-source_count,-lineage_trust,-slow_poison,-hash_chain,-quarantine",
+      "leak_after": false,
+      "closed": true
+    },
+    {
+      "leak": "poisoning",
+      "detected": true,
+      "advisor_enabled": "action_gate + authority",
+      "spec": "on:-walls,-hard_delete,-source_count,-lineage_trust,-slow_poison,-hash_chain,-quarantine,-entity_erasure,-tombstone",
+      "leak_after": false,
+      "closed": true
+    }
+  ]
+}

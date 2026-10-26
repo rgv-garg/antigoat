@@ -99,8 +99,8 @@ def main() -> None:
         shutil.rmtree(data)
     runs = [r for r in a.runs.split(",") if r] or [
         f.stem for f in sorted((ROOT / "results").glob("*.jsonl")) if f.stat().st_size > 0]
-    # real-model runs first, published ones first, offline mock last
-    runs.sort(key=lambda r: (0 if r.startswith("final-") else (2 if "mock" in r else 1), r))
+    if not a.runs:  # real-model runs first, published ones first, offline mock last (else: the order given)
+        runs.sort(key=lambda r: (0 if r.startswith("final-") else (2 if "mock" in r else 1), r))
     exported = [export_run(r, data) for r in runs]
     (data / "runs.json").write_text(json.dumps({"runs": [e["id"] for e in exported],
                                                 "labels": {e["id"]: e["label"] for e in exported}},

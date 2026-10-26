@@ -1,0 +1,19 @@
+{
+  "generated": 1793027371.9743762,
+  "rows": [
+    {
+      "checks": "off",
+      "n": 30,
+      "resurfaced_in_search": 0,
+      "residue_messages_table": 30,
+      "residue_history_table": 60
+    },
+    {
+      "checks": "on",
+      "n": 30,
+      "resurfaced_in_search": 0,
+      "residue_messages_table": 0,
+      "residue_history_table": 0
+    }
+  ]
+}
