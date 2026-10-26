@@ -86,10 +86,24 @@ def embed(texts: list[str]) -> np.ndarray:
         if _model is None:
             from sentence_transformers import SentenceTransformer
 
-            try:  # half precision on GPU: ~half the memory (the LLM server shares this GPU)
+            # half precision on GPU: ~half the memory (the LLM server shares this GPU). The
+            # keyword is `dtype` in newer transformers, `torch_dtype` in older ones.
+            # EMBED_DEVICE=cpu keeps embeddings off the GPU entirely (the web demo uses this, so it
+            # never competes with vLLM + a running experiment for GPU memory).
+            import os
+            device = os.environ.get("EMBED_DEVICE") or None
+            attempts = [{}]
+            try:
                 import torch
-                kw = {"model_kwargs": {"torch_dtype": torch.float16}} if torch.cuda.is_available() else {}
+                if torch.cuda.is_available() and device != "cpu":
+                    attempts = [{"model_kwargs": {"dtype": torch.float16}},
+                                {"model_kwargs": {"torch_dtype": torch.float16}}, {}]
             except Exception:  # noqa: BLE001
-                kw = {}
-            _model = SentenceTransformer(SETTINGS.embed_model, **kw)
+                pass
+            for kw in attempts:
+                try:
+                    _model = SentenceTransformer(SETTINGS.embed_model, device=device, **kw)
+                    break
+                except TypeError:
+                    continue
         return np.asarray(_model.encode(texts, normalize_embeddings=True, batch_size=16), dtype=np.float32)

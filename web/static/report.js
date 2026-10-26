@@ -21,10 +21,26 @@ function best(rows, rule, mode, attacker){
 }
 const VERDICT = {LEAK: "Leaks", PASS: "Holds", "NO-LEARN": "Stopped learning", "NO-DATA": "No data"};
 
+// Data layer: the live server (/api/...) or, on the static site (GitHub Pages), files exported by
+// scripts/export_static.py. The static page sets window.ANTIGOAT_STATIC = {base: "data/"}.
+const STATIC = window.ANTIGOAT_STATIC || null;
+const _replayCache = {};
+const getJSON = async (u) => (await fetch(u)).json();
+const API = {
+  runs: () => STATIC ? getJSON(STATIC.base + "runs.json") : getJSON("/api/runs"),
+  findings: (run) => STATIC ? getJSON(STATIC.base + "findings/" + encodeURIComponent(run) + ".json")
+                            : getJSON("/api/findings?run=" + encodeURIComponent(run)),
+  replay: async (run, rule, mode, sessions) => {
+    if(!STATIC) return getJSON(`/api/replay?run=${encodeURIComponent(run)}&rule=${encodeURIComponent(rule)}&checks=${encodeURIComponent(mode)}&sessions=${sessions}`);
+    _replayCache[run] = _replayCache[run] || await getJSON(STATIC.base + "replay/" + encodeURIComponent(run) + ".json");
+    return _replayCache[run][`${rule}|${mode}|${sessions}`] || {slots: []};
+  },
+};
+
 async function init(){
-  const r = await (await fetch("/api/runs")).json();
+  const r = await API.runs();
   const sel = $("#run"); sel.innerHTML = "";
-  (r.runs || []).forEach(n => sel.insertAdjacentHTML("beforeend", `<option value="${esc(n)}">${esc(n)}</option>`));
+  (r.runs || []).forEach(n => sel.insertAdjacentHTML("beforeend", `<option value="${esc(n)}">${esc((r.labels && r.labels[n]) || n)}</option>`));
   sel.onchange = () => load(sel.value);
   if(r.runs && r.runs.length) load(r.runs[0]);
   else $("#board").innerHTML = `<p class="empty">No results yet. Run <code>python run_experiment.py</code> and they appear here.</p>`;
@@ -32,7 +48,7 @@ async function init(){
 
 async function load(run){
   RUN = run;
-  DATA = await (await fetch("/api/findings?run=" + encodeURIComponent(run))).json();
+  DATA = await API.findings(run);
   const rows = DATA.rows || [];
   const modes = MODES.filter(([m]) => rows.some(r => r.checks === m));
   const rules = ORDER.filter(rule => rows.some(r => r.rule === rule))
@@ -92,7 +108,7 @@ async function load(run){
 }
 
 async function replay(rule, mode, sessions){
-  const r = await (await fetch(`/api/replay?run=${encodeURIComponent(RUN)}&rule=${encodeURIComponent(rule)}&checks=${encodeURIComponent(mode)}&sessions=${sessions}`)).json();
+  const r = await API.replay(RUN, rule, mode, sessions);
   const sec = $("#replay"); sec.hidden = false;
   const title = (DATA.titles[rule] || rule).split(" - ")[0];
   $("#rtitle").textContent = `${title}, ${MODES.find(m => m[0] === mode)?.[1] || mode}, after ${sessions} session${sessions == 1 ? "" : "s"}`;

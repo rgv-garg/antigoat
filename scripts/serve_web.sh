@@ -6,4 +6,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -d ~/venv ] && source ~/venv/bin/activate || true
 pip show python-multipart >/dev/null 2>&1 || pip install "python-multipart>=0.0.9"
+# Embeddings on the CPU: the GPU is shared with vLLM and, often, a running experiment.
+export EMBED_DEVICE="${EMBED_DEVICE:-cpu}"
 exec python -m uvicorn web.app:app --host 0.0.0.0 --port 8100

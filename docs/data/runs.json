@@ -1,0 +1,10 @@
+{
+ "runs": [
+  "20261024-100259-gpu-first-6d7a",
+  "demo-mock-v3"
+ ],
+ "labels": {
+  "20261024-100259-gpu-first-6d7a": "nemotron-nano, Sahayak store",
+  "demo-mock-v3": "Offline mock model, Sahayak store (wiring check, not model behaviour)"
+ }
+}
