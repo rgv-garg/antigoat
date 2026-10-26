@@ -86,5 +86,10 @@ def embed(texts: list[str]) -> np.ndarray:
         if _model is None:
             from sentence_transformers import SentenceTransformer
 
-            _model = SentenceTransformer(SETTINGS.embed_model)
-        return np.asarray(_model.encode(texts, normalize_embeddings=True), dtype=np.float32)
+            try:  # half precision on GPU: ~half the memory (the LLM server shares this GPU)
+                import torch
+                kw = {"model_kwargs": {"torch_dtype": torch.float16}} if torch.cuda.is_available() else {}
+            except Exception:  # noqa: BLE001
+                kw = {}
+            _model = SentenceTransformer(SETTINGS.embed_model, **kw)
+        return np.asarray(_model.encode(texts, normalize_embeddings=True, batch_size=16), dtype=np.float32)

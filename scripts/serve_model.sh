@@ -12,7 +12,6 @@ source ~/vllm-latest/bin/activate
 MODEL="${MODEL:-Qwen/Qwen3.8-27B}"
 NAME="${NAME:-target}"
 TP="${TP:-1}"
-export HF_HUB_ENABLE_HF_TRANSFER=1
 exec vllm serve "$MODEL" \
   --served-model-name "$NAME" \
   --tensor-parallel-size "$TP" \
