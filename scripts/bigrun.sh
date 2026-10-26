@@ -7,8 +7,8 @@
 #   bash scripts/bigrun.sh status        what each job has finished so far
 #   bash scripts/bigrun.sh publish       merge whatever is finished into results/final-*.jsonl now
 #
-# Sizes: 200 citizens per rule and checkpoints 0,1,5,10 sessions (same as the Nemotron run);
-# Mem0 80 citizens per rule. Override like:  SLOTS=150 SESSIONS=0,1,5 bash scripts/bigrun.sh
+# Sizes: 150 citizens per rule, checkpoints 0,1,5 sessions; Mem0 80 citizens per rule over 0,1,5,10
+# sessions (its deletion-over-time curve). Override like:  SLOTS=200 SESSIONS=0,1,5,10 bash scripts/bigrun.sh
 # Split over several machines: JOBS picks which jobs run here, e.g.
 #   JOBS=full-off,full-v2 bash scripts/bigrun.sh      (names: full-off full-v2 full-on full-paranoid
 #   calib mem0-off mem0-v2 mem0-on extras)  - copy every machine's results/ together afterwards.
@@ -31,19 +31,26 @@ esac
 [ -f results/llm_urls.txt ] || { echo "Start the model servers first:  bash scripts/serve_many.sh"; exit 1; }
 grep -q "^LLM_MODEL=target" .env 2>/dev/null || bash scripts/use_env.sh open
 export LLM_BASE_URL="$(cat results/llm_urls.txt)"   # overrides .env: all servers, least busy first
-export MAX_WORKERS="${MAX_WORKERS:-128}"
-SLOTS="${SLOTS:-200}"; SESSIONS="${SESSIONS:-0,1,5,10}"; MEM0_SLOTS="${MEM0_SLOTS:-80}"
+SLOTS="${SLOTS:-150}"; SESSIONS="${SESSIONS:-0,1,5}"
+MEM0_SLOTS="${MEM0_SLOTS:-80}"; MEM0_SESSIONS="${MEM0_SESSIONS:-0,1,5,10}"
 N=$(nvidia-smi -L | wc -l)
+JOBS="${JOBS:-all}"
+want () { [ "$JOBS" = all ] || [[ ",$JOBS," == *",$1,"* ]]; }
+njobs=0
+for j in full-off full-v2 full-on full-paranoid calib mem0-off mem0-v2 mem0-on; do want "$j" && njobs=$((njobs + 1)); done
+# ~128 requests in flight per GPU in total (= what each model server batches at once)
+W=$(( njobs > 0 ? 128 * N / njobs : 128 )); [ "$W" -gt 128 ] && W=128; [ "$W" -lt 32 ] && W=32
+export MAX_WORKERS="${MAX_WORKERS:-$W}"
+export REQUEST_TIMEOUT="${REQUEST_TIMEOUT:-300}"   # long attacker replies can queue behind others
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"  # less wasted GPU memory
 LOG=results/bigrun.log
 exec > >(tee -a "$LOG") 2>&1
-echo "================ bigrun start $(date)  gpus=$N slots=$SLOTS sessions=$SESSIONS workers/job=$MAX_WORKERS"
+echo "================ bigrun start $(date)  gpus=$N slots=$SLOTS sessions=$SESSIONS mem0 $MEM0_SLOTS/$MEM0_SESSIONS workers/job=$MAX_WORKERS"
 
 # download the search model once, before 8 jobs try to at the same time
 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3', device='cpu')" \
   || { echo "could not load BAAI/bge-m3"; exit 1; }
 
-JOBS="${JOBS:-all}"
-want () { [ "$JOBS" = all ] || [[ ",$JOBS," == *",$1,"* ]]; }
 echo "jobs on this machine: $JOBS"
 i=0
 PIDS=()
@@ -65,7 +72,7 @@ done
 job calib --no-bugs --checks off --slots "$SLOTS" --sessions 0,1 --bg-sample 0.5 --attackers goal
 # 3) the real Mem0 library as shipped: deletion over time + entangled deletion
 for m in off v2 on; do
-  job "mem0-$m" --backend mem0 --rules deletion,entangled --slots "$MEM0_SLOTS" --sessions "$SESSIONS" \
+  job "mem0-$m" --backend mem0 --rules deletion,entangled --slots "$MEM0_SLOTS" --sessions "$MEM0_SESSIONS" \
     --checks "$m" --attackers goal
 done
 
@@ -88,4 +95,4 @@ done
 
 publish
 echo "================ bigrun done $(date)  ($fails job(s) failed)"
-echo "Results: results/final-*.  This machine is still running (and billing): brev stop it when done."
+echo "Results: results/big-*.jsonl (+ final-*).  This machine is still running (and billing) until you stop or delete it."

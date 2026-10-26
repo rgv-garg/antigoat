@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One vLLM server per GPU (ports 8000, 8001, ...) for the big parallel run (scripts/bigrun.sh).
 # Each GPU gets its own copy of the model, so 8 GPUs answer ~8x more requests at once, and each
-# server leaves ~14 GB of its GPU free for the experiments' search model (bge-m3): no more
+# server leaves ~24 GB of its GPU free for the experiments' search model (bge-m3): no more
 # out-of-memory crashes from everything sharing one card.
 #   tmux new -s llm
 #   bash scripts/serve_many.sh            # every GPU on this machine, Qwen3-32B-FP8
@@ -10,11 +10,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p results
-if [ "${1:-}" = "stop" ]; then pkill -f "vllm serve" || true; rm -f results/llm_urls.txt; echo "stopped"; exit 0; fi
+if [ "${1:-}" = "stop" ]; then
+  pkill -f "vllm serve" || true; sleep 5; pkill -f "VLLM::" || true; rm -f results/llm_urls.txt
+  for _ in $(seq 1 30); do  # wait until the GPUs are really free again
+    used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | sort -n | tail -1)
+    [ "$used" -lt 3000 ] && break; sleep 2
+  done
+  echo "stopped (GPU memory in use now: ${used:-?} MiB)"; exit 0
+fi
 
 MODEL="${MODEL:-Qwen/Qwen3-32B-FP8}"
 NAME="${NAME:-target}"
-GPU_UTIL="${GPU_UTIL:-0.82}"   # 0.82 of 80 GB = 66 GB for vLLM (33 GB weights + ~30 GB KV cache)
+GPU_UTIL="${GPU_UTIL:-0.70}"   # 0.70 of 80 GB = 56 GB for vLLM (33 GB weights + ~20 GB KV cache);
+                               # leaves ~24 GB for the experiment jobs' search model on the same GPU
 N=$(nvidia-smi -L | wc -l)
 source ~/vllm-latest/bin/activate
 

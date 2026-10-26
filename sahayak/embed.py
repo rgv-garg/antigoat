@@ -12,15 +12,17 @@ EMBED_MODEL=nvidia:<model>  hosted NVIDIA embeddings over the API (no GPU, no do
 from __future__ import annotations
 
 import hashlib
+import queue
 import re
 import threading
+from concurrent.futures import Future
 
 import numpy as np
 
 from config import SETTINGS
 
 DIM_HASH = 512
-_model = None
+_q = None  # requests for the embedding worker thread: (texts, Future)
 _lock = threading.Lock()
 
 
@@ -81,29 +83,77 @@ def embed(texts: list[str]) -> np.ndarray:
                 if attempt == 2:
                     raise
                 time.sleep(1.5 * (attempt + 1))
-    global _model
+    global _q
     with _lock:
-        if _model is None:
-            from sentence_transformers import SentenceTransformer
-
-            # half precision on GPU: ~half the memory (the LLM server shares this GPU). The
-            # keyword is `dtype` in newer transformers, `torch_dtype` in older ones.
-            # EMBED_DEVICE=cpu keeps embeddings off the GPU entirely (the web demo uses this, so it
-            # never competes with vLLM + a running experiment for GPU memory).
-            import os
-            device = os.environ.get("EMBED_DEVICE") or None
-            attempts = [{}]
+        if _q is None:
+            _q = queue.Queue()
+            ready: Future = Future()
+            threading.Thread(target=_embed_worker, args=(ready,), daemon=True, name="embed").start()
             try:
-                import torch
-                if torch.cuda.is_available() and device != "cpu":
-                    attempts = [{"model_kwargs": {"dtype": torch.float16}},
-                                {"model_kwargs": {"torch_dtype": torch.float16}}, {}]
-            except Exception:  # noqa: BLE001
-                pass
-            for kw in attempts:
-                try:
-                    _model = SentenceTransformer(SETTINGS.embed_model, device=device, **kw)
-                    break
-                except TypeError:
-                    continue
-        return np.asarray(_model.encode(texts, normalize_embeddings=True, batch_size=16), dtype=np.float32)
+                ready.result()
+            except BaseException:
+                _q = None
+                raise
+    fut: Future = Future()
+    _q.put((list(texts), fut))
+    return fut.result()
+
+
+def _load_model():
+    from sentence_transformers import SentenceTransformer
+
+    # half precision on GPU: ~half the memory (the LLM server shares this GPU). The
+    # keyword is `dtype` in newer transformers, `torch_dtype` in older ones.
+    # EMBED_DEVICE=cpu keeps embeddings off the GPU entirely (the web demo uses this, so it
+    # never competes with vLLM + a running experiment for GPU memory); EMBED_DEVICE=cuda:3 picks a GPU.
+    import os
+    device = os.environ.get("EMBED_DEVICE") or None
+    attempts = [{}]
+    try:
+        import torch
+        if torch.cuda.is_available() and device != "cpu":
+            attempts = [{"model_kwargs": {"dtype": torch.float16}},
+                        {"model_kwargs": {"torch_dtype": torch.float16}}, {}]
+    except Exception:  # noqa: BLE001
+        pass
+    for kw in attempts:
+        try:
+            return SentenceTransformer(SETTINGS.embed_model, device=device, **kw)
+        except TypeError:
+            continue
+    return SentenceTransformer(SETTINGS.embed_model, device=device)
+
+
+def _embed_worker(ready: Future) -> None:
+    """The ONLY thread that touches the embedding model.
+
+    CUDA libraries keep handles and scratch memory per calling thread. With 100+ request threads
+    each calling encode(), that added ~4 GB per process and ran a shared GPU out of memory. One
+    worker thread keeps that to one set, and lets requests that arrive together share a batch."""
+    try:
+        model = _load_model()
+    except BaseException as e:  # noqa: BLE001
+        ready.set_exception(e)
+        return
+    ready.set_result(True)
+    while True:
+        items = [_q.get()]
+        n = len(items[0][0])
+        while n < 256:
+            try:
+                item = _q.get_nowait()
+            except queue.Empty:
+                break
+            items.append(item)
+            n += len(item[0])
+        texts = [t for ts, _ in items for t in ts]
+        try:
+            vecs = np.asarray(model.encode(texts, normalize_embeddings=True, batch_size=16), dtype=np.float32)
+        except BaseException as e:  # noqa: BLE001
+            for _, f in items:
+                f.set_exception(e)
+            continue
+        i = 0
+        for ts, f in items:
+            f.set_result(vecs[i:i + len(ts)])
+            i += len(ts)
