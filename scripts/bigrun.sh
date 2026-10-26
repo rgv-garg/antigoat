@@ -9,6 +9,9 @@
 #
 # Sizes: 200 citizens per rule and checkpoints 0,1,5,10 sessions (same as the Nemotron run);
 # Mem0 80 citizens per rule. Override like:  SLOTS=150 SESSIONS=0,1,5 bash scripts/bigrun.sh
+# Split over several machines: JOBS picks which jobs run here, e.g.
+#   JOBS=full-off,full-v2 bash scripts/bigrun.sh      (names: full-off full-v2 full-on full-paranoid
+#   calib mem0-off mem0-v2 mem0-on extras)  - copy every machine's results/ together afterwards.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 [ -d ~/venv ] && source ~/venv/bin/activate
@@ -39,10 +42,14 @@ echo "================ bigrun start $(date)  gpus=$N slots=$SLOTS sessions=$SESS
 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3', device='cpu')" \
   || { echo "could not load BAAI/bge-m3"; exit 1; }
 
+JOBS="${JOBS:-all}"
+want () { [ "$JOBS" = all ] || [[ ",$JOBS," == *",$1,"* ]]; }
+echo "jobs on this machine: $JOBS"
 i=0
 PIDS=()
 job () {  # job <name> <run_experiment args...>  -> background, log in results/big-<name>.log
   local name=$1; shift
+  want "$name" || return 0
   EMBED_DEVICE="cuda:$((i % N))" nohup python run_experiment.py "$@" --tag "big-$name" \
     > "results/big-$name.log" 2>&1 &
   PIDS+=("$!:$name")
@@ -71,11 +78,11 @@ done
 
 # 4) the quick deterministic ones (Mem0 storage probe, ablation, blast radius, advisor)
 export EMBED_DEVICE=cuda:0
-for step in "run_mem0_probe.py --n 30 --tag full" "run_ablation.py --tag full" \
+want extras && for step in "run_mem0_probe.py --n 30 --tag full" "run_ablation.py --tag full" \
             "run_extras.py --citizens 25 --tag full" "run_advisor.py --tag full"; do
   echo ">>> $step"; python $step || echo "<<< FAILED: $step"
 done
-for f in results/ablation-full.json results/mem0-probe-full.json results/extras-full.json results/advisor-full.json; do
+want extras && for f in results/ablation-full.json results/mem0-probe-full.json results/extras-full.json results/advisor-full.json; do
   [ -f "$f" ] && cp "$f" "results/final-$(basename "$f")"
 done
 
