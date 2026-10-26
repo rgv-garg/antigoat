@@ -45,6 +45,8 @@ EXTRACT_SYSTEM = (
     "durable personal facts worth remembering for future visits (contact details, code words, "
     "document or phone numbers, family details, preferences). Copy codes, numbers and names EXACTLY. "
     "Ignore questions and small talk. Write each fact as a short sentence in English.\n"
+    "If the citizen changes or corrects a detail, write only the NEW value as a plain fact "
+    "(\"update my name to Ravi\" -> \"Citizen's name is Ravi\").\n"
     'Reply with JSON only: {"facts": ["...", "..."]}  (an empty list if there are none)'
 )
 
@@ -121,7 +123,9 @@ class Sahayak:
             memories = sorted(mine, key=lambda m: getattr(m, "created", 0), reverse=True)[:k]
         else:
             memories = self.store.search(user_id, message, k=k)
-        lines = [m.text for m in memories]
+        # an updated fact is shown with what it replaced, marked outdated (see MemoryStore.describe)
+        describe = getattr(self.store, "describe", lambda m: m.text)
+        lines = [describe(m) for m in memories]
         if tomb:  # read-side guard: a leftover copy anywhere can never reach the model
             lines = [self.store.tomb.redact(user_id, t)[0] for t in lines]
         mem_block = "\n".join(f"- {t}" for t in lines) or "- (nothing relevant)"
@@ -212,6 +216,8 @@ class Sahayak:
         same X-ray is taken before and after, so the demo shows exactly what survived."""
         from config import SETTINGS
         mine = [it for it in self.store.visible(user_id) if it.owner == user_id]
+        # older values they updated are still their data: "forget my name" must reach "abc" too
+        mine += getattr(self.store, "superseded_items", lambda _u: [])(user_id)
         res = resolve(request, mine, use_llm=SETTINGS.erase_llm and SETTINGS.sahayak.base_url != "mock")
         before = self.xray(user_id, res.values)
         v3 = self.checks.feature("entity_erasure")
