@@ -13,8 +13,8 @@
   },
   {
    "tag": "big-mem0-on",
-   "file": "20261026-140525-big-mem0-on-e4ce.jsonl",
-   "guesses": 424
+   "file": "20261026-174128-big-mem0-on-2238.jsonl",
+   "guesses": 640
   }
  ],
  "sahayak_model": "target",
@@ -56,6 +56,6 @@
   "backend": "mem0",
   "tag": "final-mem0"
  },
- "finished": null,
+ "finished": 1793039308.9735472,
  "seconds": 2902.3
 }
