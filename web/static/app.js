@@ -180,7 +180,8 @@ function render(r){
 
 // ------------------------------------------------------------------ actions
 function setModeline(){
-  $("#modeline").innerHTML = MODELINE[mode] + BACKEND_LINE[backend];
+  const demo = info.mock ? " <b>Offline demo model:</b> Sahayak's replies are templated, but the memory, the X-ray, the erasure and AntiGOAT's attack are the real code." : "";
+  $("#modeline").innerHTML = MODELINE[mode] + BACKEND_LINE[backend] + demo;
   document.querySelectorAll("#checks button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.m === mode)));
   document.querySelectorAll("#backend button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.b === backend)));
 }
