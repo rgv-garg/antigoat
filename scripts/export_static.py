@@ -43,10 +43,14 @@ def clean(x):
     return x
 
 
+ALIASES = {"target": "Qwen3-32B-FP8", "nemotron-nano": "Nemotron 3 Nano"}
+
+
 def label(run: str, meta: dict) -> str:
-    model = meta.get("sahayak_model") or "?"
+    model = ALIASES.get(meta.get("sahayak_model"), meta.get("sahayak_model")) or "?"
     backend = "Mem0" if meta.get("backend") == "mem0" else "Sahayak store"
-    kind = {"full": "full sweep", "calib": "false-alarm check (no planted bugs)", "mem0": "real Mem0"}
+    kind = {"full": "full sweep", "calib": "false-alarm check (no planted bugs)", "mem0": "real Mem0",
+            "gpu-first": "first real-model run"}
     tag = next((v for k, v in kind.items() if k in run), "")
     if model == "mock":
         return f"Offline mock model, {backend} (wiring check, not model behaviour)"
@@ -60,6 +64,8 @@ def export_run(run: str, out: Path) -> dict:
     meta = json.loads(meta_p.read_text(encoding="utf-8")) if meta_p.exists() else {}
     m = {k: meta.get(k) for k in ("sahayak_model", "attacker_model", "backend", "seconds", "embed_model")}
     m["slots"] = (meta.get("config") or {}).get("slots")
+    m["sahayak_model"] = ALIASES.get(m.get("sahayak_model"), m.get("sahayak_model"))
+    m["finished"] = bool(meta.get("finished"))
     findings = {"run": run, "rows": scorecard(records), "titles": {r: RULES[r].title for r in RULES},
                 "expect": {r: RULES[r].expect for r in RULES}, "meta": m}
     (out / "findings").mkdir(parents=True, exist_ok=True)

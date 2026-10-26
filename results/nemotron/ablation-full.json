@@ -1,0 +1,29 @@
+{
+  "generated": 1792880689.1037846,
+  "matrix": [
+    {
+      "rule": "isolation",
+      "check": "walls",
+      "leak_on": false,
+      "leak_off": true,
+      "leak_ablated": true,
+      "isolates": true
+    },
+    {
+      "rule": "deletion",
+      "check": "hard_delete",
+      "leak_on": false,
+      "leak_off": true,
+      "leak_ablated": true,
+      "isolates": true
+    },
+    {
+      "rule": "poisoning",
+      "check": "authority + action_gate",
+      "leak_on": false,
+      "leak_off": true,
+      "leak_ablated": true,
+      "isolates": true
+    }
+  ]
+}

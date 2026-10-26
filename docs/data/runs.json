@@ -1,10 +1,14 @@
 {
  "runs": [
-  "20261024-100259-gpu-first-6d7a",
+  "20261024-191815-full-ea8f",
+  "20261024-220001-calib-8a60",
+  "20261025-013701-mem0del-997a",
   "demo-mock-v3"
  ],
  "labels": {
-  "20261024-100259-gpu-first-6d7a": "nemotron-nano, Sahayak store",
+  "20261024-191815-full-ea8f": "Nemotron 3 Nano, Sahayak store, full sweep",
+  "20261024-220001-calib-8a60": "Nemotron 3 Nano, Sahayak store, false-alarm check (no planted bugs)",
+  "20261025-013701-mem0del-997a": "Nemotron 3 Nano, Mem0, real Mem0",
   "demo-mock-v3": "Offline mock model, Sahayak store (wiring check, not model behaviour)"
  }
 }
