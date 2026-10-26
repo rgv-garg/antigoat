@@ -50,47 +50,6 @@ TOPICS: dict[str, str] = {
 }
 ALL_RE = re.compile(r"\b(everything|all|sab|sabhi|saara|sara)\b|सब", re.I)
 
-# "please forget ..." in English / Hindi / Hinglish. Hinglish is spelled many ways
-# (bhool/bhul, jao/jaiye), so match the stem + an imperative ending, not one exact spelling.
-# A plain "main bhool gaya" (I forgot) is NOT an erasure request.
-FORGET_RE = re.compile(
-    r"\b(forget|delete|erase|remove|wipe)\b"
-    r"|\bbh(?:oo|u)l\s*ja(?:o|ao|iye|iyega|na|)\b"
-    r"|\bbh(?:oo|u)la\s*(?:do|dijiye|dijiyega|de|dena)\b"
-    r"|\b(?:mita|mitaa|hata|hataa|nikal|nikaal)\s*(?:do|dijiye|dijiyega|de|dena)\b"
-    r"|भूल\s*जा|भुला\s*द|मिटा\s*द|हटा\s*द|निकाल\s*द", re.I)
-# "don't erase my name", "never delete it", "naam mat mita do", "नाम मत मिटा दो"
-_NEG_RE = re.compile(r"\b(?:don'?t|dont|do\s+not|never|not|mat|nahi|nahin|nai)\b"
-                     r"|(?<![ऀ-ॿ])(?:मत|नहीं)(?![ऀ-ॿ])", re.I)
-_NEG_AFTER_RE = re.compile(r"\s*(?:mat|nahi|nahin|मत|नहीं)(?![A-Za-zऀ-ॿ])", re.I)
-# clauses: "don't erase my name but forget my number" asks to erase only the number
-_CLAUSE_RE = re.compile(r"[.;!?\n।]+|,?\s*\b(?:but|however|lekin|magar|par)\b", re.I)
-
-
-def erase_request(message: str) -> str | None:
-    """The part of `message` that really asks Sahayak to erase something, or None.
-
-    "don't erase my name" -> None (a negated verb is not a request);
-    "don't erase my name but forget my number" -> "forget my number"."""
-    asks, negated = [], False
-    for clause in _CLAUSE_RE.split(message):
-        if not clause or not clause.strip():
-            continue
-        is_ask, start = False, 0
-        for m in FORGET_RE.finditer(clause):
-            # the few words before this verb (not reaching back past an earlier verb)
-            before = " ".join(clause[start:m.start()].split()[-4:])
-            start = m.end()
-            if _NEG_RE.search(before) or _NEG_AFTER_RE.match(clause[m.end():]):
-                negated = True
-            else:
-                is_ask = True
-        if is_ask:
-            asks.append(clause.strip(" ,"))
-    if not asks:
-        return None
-    return message if not negated else ". ".join(asks)
-
 # Values that can be pulled out of a memory's text, per topic.
 _PHONE = r"(?<![\d०-९])(?:\+?91[\s-]?)?[6-9६-९][\d०-९]{4}[\s-]?[\d०-९]{5}(?![\d०-९])"
 _AADHAAR = r"(?<![\d०-९])[\d०-९]{4}[\s-]?[\d०-९]{4}[\s-]?[\d०-९]{4}(?![\d०-९])"
@@ -103,8 +62,7 @@ _NUM = r"(?<![\d०-९])[\d०-९]{4,}(?![\d०-९])"
 _WORD = r"[A-Za-zऀ-ॿ][A-Za-zऀ-ॿ'.]*"
 # "my name is Teja", "mera naam teja hai", "मेरा नाम तेजा है", "call me Teja" (any case)
 _NAME_CUES = re.compile(
-    r"(?:\bname\s+(?:(?:has\s+been|was|is)\s+)?(?:changed|updated|corrected)\s+(?:to|as)|\bname\s+is(?:\s+now)?|"
-    r"\bname\s+to|\bname'?s|\bnaam\s+(?:hai\s+)?|\bnam\s+|नाम\s+(?:है\s+)?|\bcall\s+me|\bcalled|"
+    r"(?:\bname\s+is|\bname'?s|\bnaam\s+(?:hai\s+)?|\bnam\s+|नाम\s+(?:है\s+)?|\bcall\s+me|\bcalled|"
     r"\bme\s+\(|\bmyself)"
     rf"\s*[:\-]?\s*({_WORD}(?:\s+{_WORD})?)", re.I)
 # weaker cues need a Capitalised word: "I am Teja", "this is Teja", "main Teja hoon"
@@ -192,57 +150,6 @@ def explicit_values(request: str) -> list[str]:
             seen.add(k)
             out.append(v)
     return out
-
-
-_EN_VERB = re.compile(r"(?:forget|delete|erase|remove|wipe)", re.I)
-_HI_VERB = re.compile(r"(?:bh(?:oo|u)l|bh(?:oo|u)la|mita|mitaa|hata|hataa|nikal|nikaal)$|भूल|भुला|मिटा|हटा|निकाल", re.I)
-# "forget that / it" points back at the last thing said - that is the only case for the fallback
-_REF_WORDS = {"it", "that", "this", "those", "these", "last", "above", "previous", "earlier", "what",
-              "whatever", "me", "message", "msg", "yeh", "ye", "woh", "wo", "vo", "jo",
-              "isse", "ise", "use", "usko", "isko", "यह", "ये", "वह", "वो", "इसे", "उसे"}
-_LEAD_SKIP = {"please", "pls", "plz", "kindly", "my", "mera", "meri", "mere", "the", "a", "an", "about",
-              "ko", "word", "entry", "fact", "detail", "details", "mention", "of"}
-_TAIL_STOP = {"from", "in", "now", "too", "also", "everywhere", "completely", "forever", "memory",
-              "memories", "record", "records", "immediately", "please", "pls", "plz", "and", "ji", "karo",
-              "kar", "do", "de", "dijiye", "jao", "ja", "sahayak", "for", "right", "away", "ko", "wala",
-              "wali", "mera", "meri", "my", "is", "to"} | _STOP
-
-
-def bare_values(request: str) -> list[str]:
-    """'erase Teja' -> ['Teja']: the thing named right next to the verb, for a request that names
-    neither a topic ('my name') nor a pattern value (number, code). [] when the request points
-    back with 'it / that' or names nothing - only then may we fall back to 'the last fact'.
-    English puts the value after the verb; Hinglish/Hindi before it ('Teja ko bhool jao')."""
-    toks = re.findall(r"[A-Za-z0-9ऀ-ॿ][A-Za-z0-9ऀ-ॿ'@.+\-]*", request)
-    for i, tok in enumerate(toks):
-        t = tok.lower().strip(".'")
-        if _EN_VERB.fullmatch(t):
-            seq, backward = toks[i + 1:], False
-        elif _HI_VERB.match(t):
-            seq, backward = list(reversed(toks[:i])), True
-        else:
-            continue
-        picked: list[str] = []
-        for w in seq:
-            w = w.strip(".'")
-            possessive = w.lower().endswith("'s")   # "delete Teja's story" -> Teja
-            if possessive:
-                w = w[:-2]
-            lw = w.lower()
-            if lw in _REF_WORDS:
-                return []
-            if not picked and lw in _LEAD_SKIP:
-                continue
-            if lw in _TAIL_STOP or _EN_VERB.fullmatch(lw) or len(picked) == 3:
-                break
-            picked.append(w)
-            if possessive and not backward:
-                break
-        if backward:
-            picked.reverse()
-        if picked:
-            return [" ".join(picked)]
-    return []
 
 
 def normalize(v: str) -> str:
@@ -379,12 +286,6 @@ def resolve(request: str, memories: list, use_llm: bool = False) -> Resolution:
         for m in memories:
             for t in TOPICS:
                 res.values += values_in(m.text, t)
-    elif bare_values(request):
-        # "erase Teja": they named the value itself. Erase exactly that (whole words only) -
-        # if it is not in memory, erase nothing. Never guess "the last fact" here: that is how
-        # "erase Teja" used to wipe "my name is Tejas".
-        res.values = bare_values(request)
-        res.picks = [m for m in memories if any(pattern(v).search(m.text) for v in res.values)]
     else:  # "forget it / that": the latest thing they told us
         facts = [m for m in memories if m.btype == "personal_fact"] or list(memories)
         last = max(facts, key=lambda m: getattr(m, "created", 0), default=None)

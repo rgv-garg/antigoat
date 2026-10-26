@@ -26,7 +26,7 @@ import numpy as np
 
 from sahayak.checks import MemoryChecks
 from sahayak.embed import embed
-from sahayak.erasure import MASK, Tombstones, normalize, pattern, still_useful, values_in
+from sahayak.erasure import MASK, Tombstones, pattern, still_useful
 
 DEFAULT_BUGS = {"shared_index": True, "soft_delete": True, "doc_as_rule": True, "guardrail_gap": True}
 GLOBAL = "global"  # owner for policies that apply to everyone
@@ -35,34 +35,6 @@ GLOBAL = "global"  # owner for policies that apply to everyone
 # is set AND (checks are off, OR the neutralising sub-check has been disabled for ablation).
 _NEUTRALISED_BY = {"shared_index": "walls", "guardrail_gap": "walls",
                    "soft_delete": "hard_delete", "doc_as_rule": "authority"}
-
-# ------------------------------------------------------------------ slots (fact updates)
-# A citizen has ONE current value of these. A newer fact about the same slot replaces the older
-# one ("my name is abc" -> "update my name to xyz"): the old fact is kept but marked
-# 'superseded' and linked to the new one (superseded_by / supersedes), so retrieval sees only
-# the current value and history can still be traced. Free-text stories have no slot.
-_SLOT_TOPICS = ("name", "phone", "email", "birth", "aadhaar", "address")
-_FAMILY_REL = re.compile(r"\b(father|mother|wife|husband|son|daughter|brother|sister|pita|mata|papa|mummy|"
-                         r"bhai|behen)\b", re.I)
-# words that mean "one MORE value", not a replacement ("my alternate number", "my other brother")
-_MULTI = re.compile(r"\b(alternate|alternative|another|other|second|secondary|also|extra|backup|work|office|"
-                    r"old|previous|former|earlier)\b", re.I)
-
-
-def slot_of(text: str) -> tuple[str, str] | None:
-    """(slot, value) a fact states, e.g. "The user's name is Tejas" -> ("name", "Tejas")."""
-    if _MULTI.search(text):
-        return None
-    rel = _FAMILY_REL.search(text)
-    if rel:  # "my father's name is Ramesh" is about the father, not the citizen
-        vals = values_in(text, "family")
-        return (f"family:{rel.group(1).lower()}", vals[0]) if vals else None
-    for topic in _SLOT_TOPICS:
-        vals = values_in(text, topic)
-        if vals:
-            return topic, vals[0]
-    return None
-
 
 @lru_cache(maxsize=200_000)
 def _tokens(text: str) -> frozenset:
@@ -80,7 +52,7 @@ class Item:
     source: str        # citizen | document | web | admin_signed | agent
     btype: str         # personal_fact | preference | world_fact | policy | instruction | conversation | summary | document
     parents: tuple = ()
-    status: str = "active"   # active | probation | superseded | deleted
+    status: str = "active"   # active | probation | deleted
     created: int = 0
     emb: np.ndarray | None = field(default=None, compare=False, repr=False)
     meta: dict = field(default_factory=dict, compare=False)
@@ -167,52 +139,7 @@ class MemoryStore:
         # origins assert it (ten copies of one forward stay probation).
         if status == "probation":
             self._maybe_corroborate(iid)
-        if btype == "personal_fact" and status == "active":
-            self._supersede(iid)
         return iid
-
-    def _supersede(self, iid: int) -> None:
-        """A newer fact about the same slot replaces the older one (see slot_of). Only an equal
-        or more trusted source may replace a fact: a document cannot overwrite what the
-        citizen said."""
-        with self._lock:
-            new = self.items.get(iid)
-            got = slot_of(new.text) if new else None
-            if not got:
-                return
-            slot, value = got
-            self.items[iid] = new = replace(new, meta={**new.meta, "slot": slot, "value": value})
-            for old in list(self.items.values()):
-                if (old.id == iid or old.owner != new.owner or old.btype != "personal_fact"
-                        or old.status != "active" or old.meta.get("slot") != slot):
-                    continue
-                if normalize(old.meta.get("value", "")) == normalize(value) or old.trust > new.trust:
-                    continue
-                self.items[old.id] = replace(old, status="superseded",
-                                             meta={**old.meta, "superseded_by": iid})
-                # the raw chat turn it came from may hold other details, so it stays - but
-                # flagged, so the model does not read the old value as current
-                for p in old.parents:
-                    turn = self.items.get(p)
-                    if turn and turn.btype == "conversation":
-                        self.items[p] = replace(turn, meta={**turn.meta, "outdated": iid})
-                new = replace(new, meta={**new.meta, "supersedes": (*new.meta.get("supersedes", ()), old.id)})
-                self.items[iid] = new
-
-    def superseded_items(self, owner: str) -> list[Item]:
-        """Older values this citizen has updated (still theirs - erasure must reach them)."""
-        with self._lock:
-            return [it for it in self.items.values() if it.owner == owner and it.status == "superseded"]
-
-    def describe(self, it: Item) -> str:
-        """Memory line for the model: the current value, plus what it replaced."""
-        with self._lock:
-            olds = [self.items[o].text for o in it.meta.get("supersedes", ()) if o in self.items]
-        if it.meta.get("outdated"):
-            return f"{it.text} (outdated: a detail in this message was later updated)"
-        if not olds:
-            return it.text
-        return f"{it.text} (current; this replaced an older record, now outdated: {'; '.join(olds)})"
 
     @staticmethod
     def _decision_key(text: str) -> str:
@@ -250,7 +177,7 @@ class MemoryStore:
     def visible(self, viewer: str) -> list[Item]:
         with self._lock:
             items = list(self.items.values())
-        items = [it for it in items if it.status not in ("deleted", "superseded")]
+        items = [it for it in items if it.status != "deleted"]
         if self._bug("shared_index"):
             return items  # BUG: no owner filter
         return [it for it in items if it.owner in (viewer, GLOBAL)]
@@ -468,7 +395,6 @@ class MemoryStore:
         with self._lock:
             raw = [it for it in self.items.values()
                    if it.owner == owner and it.btype in {"conversation", "personal_fact"}]
-            raw = [it for it in raw if it.status != "superseded"]  # outdated values stay out of summaries
             if not self._bug("soft_delete"):
                 raw = [it for it in raw if it.status != "deleted"]
             # BUG (soft_delete): deleted items are still copied into the new summary

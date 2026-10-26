@@ -72,8 +72,7 @@ function renderMem(items){
     const kind = {personal_fact:"fact", conversation:"chat turn", summary:"summary", policy:"policy",
                   document:"document", world_fact:"claim"}[it.type] || it.type;
     const owner = foreign ? `belongs to ${it.owner}, visible to ${who()}` : (it.owner === "global" ? "shared policy" : "");
-    if(it.status === "superseded") li.style.opacity = "0.5";   // an older value the citizen updated
-    li.innerHTML = `${esc(it.text)}<span class="meta">${esc(kind)}, from ${esc(it.source)}${owner ? ", " + esc(owner) : ""}${it.redacted ? ", redacted" : ""}${it.status === "superseded" ? ", outdated (replaced by an update)" : ""}${it.outdated ? ", has an outdated detail" : ""}</span>`;
+    li.innerHTML = `${esc(it.text)}<span class="meta">${esc(kind)}, from ${esc(it.source)}${owner ? ", " + esc(owner) : ""}${it.redacted ? ", redacted" : ""}</span>`;
     ol.appendChild(li);
   }
 }
