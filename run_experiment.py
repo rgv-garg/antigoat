@@ -31,11 +31,16 @@ def main() -> None:
     p.add_argument("--turns", type=int, default=3)
     p.add_argument("--bg-sample", type=float, default=1.0)
     p.add_argument("--no-bugs", action="store_true", help="turn all planted bugs off (false-alarm calibration)")
+    p.add_argument("--held-out", action="store_true",
+                   help="held-out eval: unseen canary values + Hindi poison (sets ANTIGOAT_HELDOUT=1)")
     p.add_argument("--tag", default="")
     p.add_argument("--out-dir", default="results")
     p.add_argument("--backend", default="ours", choices=["ours", "mem0"],
                    help="ours = Sahayak's store with planted bugs; mem0 = real Mem0 OSS (pip install -r requirements-mem0.txt)")
     a = p.parse_args()
+    if a.held_out:
+        import os
+        os.environ["ANTIGOAT_HELDOUT"] = "1"  # read by the planter (word pool) and worlds (poison language)
 
     cfg = RunConfig(
         rules=a.rules.split(","), slots=a.slots, sessions=[int(x) for x in a.sessions.split(",")],

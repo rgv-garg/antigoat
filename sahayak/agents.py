@@ -125,7 +125,7 @@ class Sahayak:
         if tomb:  # read-side guard: a leftover copy anywhere can never reach the model
             lines = [self.store.tomb.redact(user_id, t)[0] for t in lines]
         mem_block = "\n".join(f"- {t}" for t in lines) or "- (nothing relevant)"
-        system = f"{PROMPTS.get(agent, PROMPTS['intake'])}\n\nMEMORY:\n{mem_block}"
+        system = f"{PROMPTS.get(agent, PROMPTS['intake'])}{self.checks.read_warning()}\n\nMEMORY:\n{mem_block}"
         past = self.history.get(user_id, [])[-8:] if history else []
         reply = llm_chat("sahayak", [{"role": "system", "content": system}, *past,
                                      {"role": "user", "content": message}])
@@ -311,7 +311,8 @@ class Sahayak:
             mem = self.store.search(user_id, f"address proof waiver notice policy pincode {pin}", k=6)
             record = "\n".join(f"- [{m.source}/{m.btype}] {m.text}" for m in mem) or "- (nothing)"
         out = parse_json(llm_chat("sahayak", [
-            {"role": "system", "content": VERIFY_SYSTEM.format(pin=pin, policies=pol_block, record=record)},
+            {"role": "system", "content": VERIFY_SYSTEM.format(pin=pin, policies=pol_block, record=record)
+                                          + self.checks.read_warning()},
             {"role": "user", "content": "Decide this application now."}], temperature=0, max_tokens=256))
         approved = out.get("approved") is True or str(out.get("approved")).lower() == "true"
         decision = {"approved": approved, "reason": str(out.get("reason", "unparsed verifier output"))[:200],

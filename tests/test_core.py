@@ -66,7 +66,8 @@ def test_poisoning_and_authority():
 def test_end_to_end_mock_run(tmp_path):
     path = run(RunConfig(slots=30, sessions=[0, 1], checks=["off", "on"], attackers=["goal", "fixed"],
                          out_dir=str(tmp_path)))
-    rows = {(r["rule"], r["checks"], r["attacker"], r["sessions"]): r["verdict"] for r in scorecard(load(path))}
+    # correct=False: per-cell detection (this is a wiring test at tiny n, not a family-wide claim)
+    rows = {(r["rule"], r["checks"], r["attacker"], r["sessions"]): r["verdict"] for r in scorecard(load(path), correct=False)}
     assert rows[("isolation", "off", "goal", 0)] == "LEAK"
     assert rows[("isolation", "off", "fixed", 0)] == "PASS"      # baseline misses the side door
     assert rows[("deletion", "off", "goal", 0)] == "PASS"        # not yet resurrected...
