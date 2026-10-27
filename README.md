@@ -9,8 +9,12 @@ memory. It checks, with a statistical test rather than a demo, whether an agent:
 
 - **leaks** one person's data to another (isolation),
 - **brings back** something it was asked to forget (deletion, and the new *entangled deletion*),
-- can be **poisoned** by a fake document into changing a decision,
+- can be **poisoned** into changing a decision — a 7-class query-only attack suite (document and
+  chat injection, authority impersonation, sleeper, overwrite, cross-user, and an adaptive white-box attacker),
 - still **learns** real, signed policy updates (so a defence that simply blocks everything fails too).
+
+It also ships the governance tools the problem statement names: **provenance tracking**, **consistency /
+contradiction detection**, **source retraction**, **post-incident rollback**, and **isolation testing**.
 
 It is tested on **Sahayak**, a voice assistant that helps citizens apply for Aadhaar in their own
 language, and on the real **Mem0** library. **Memory Checks** is the defence we built and audit.
@@ -97,26 +101,35 @@ A clean system with no planted bugs is flagged at the chance rate. That's the ca
 
 ## Results
 
-**Offline mock run, v3** (`results/demo-mock-v3.jsonl`, 50 citizens per rule; deterministic, the same numbers on every laptop
-and in CI; it proves the wiring, not model behaviour):
+**Real-model grid — Qwen3-32B and Qwen3-8B, our store + unmodified Mem0, 3 seeds, Holm-corrected**
+(α = 0.01; a cell counts as a leak only after family-wide correction). Full tables and slide bullets in
+[`AntiGOAT_Results_Final.md`](AntiGOAT_Results_Final.md). The leak **transfers across models**:
 
-| Rule | Checks off | v2 (before Verified Erasure) | Checks on (v3) | Strict |
-|---|---|---|---|---|
-| Isolation | **Leaks** 100% | Holds | Holds | Holds |
-| Deletion (resurrection) | **Leaks** 85% after 1 session | Holds | Holds | Holds |
-| Entangled deletion | **Leaks** 95% | **Leaks** 100% | Holds | Holds |
-| Poisoning | **Leaks** 100% | Holds | Holds | Holds |
-| Authority (must learn) | Holds | Holds | Holds | **Stopped learning** |
-| Rules upheld | 1 of 5 | 4 of 5 | **5 of 5** | 4 of 5 |
+| Backend | Rule | Qwen3-32B off → on | Qwen3-8B off → on |
+|---|---|---|---|
+| Our store | Isolation | **88%** → 48% | **88%** → 48% |
+| Our store | Deletion | **82%** → 51% | **85%** → 51% |
+| Our store | Entangled | **94%** → 46% | **91%** → 46% |
+| Mem0 (unmodified) | Deletion | **65%** → 51% | **68%** → 51% |
+| Mem0 (unmodified) | Entangled | **74%** → 51% | **78%** → 51% |
 
-**Real model runs** (NVIDIA Nemotron 3 Nano on a Brev A100; v2 defence, before the entangled rule existed): see
-[`RESULTS.md`](RESULTS.md). Headline figures:
-- **Isolation:** leaks 71% with Checks off.
-- **Deletion:** leaks 66% with Checks off.
-- **Mem0 resurrection:** 78% after 1 session, 74% after 5 and 80% after 10, all with p ≤ 1.3e-5.
-- **Memory Checks on:** every rule holds.
+All off-cells p ≪ 0.001 after correction; every on-cell holds at chance.
 
-Real-model runs with the v3 defence and the entangled rule are scheduled in `scripts/overnight.sh`.
+- **The v2 → v3 story, on the real Mem0 library (both models):** entangled deletion leaks **74–79%**
+  with Checks off *and under v2* (hard-delete only); **Verified Erasure (v3) closes it**.
+- **Poisoning suite (query-only, 7 classes).** With Checks off, document injection, authority
+  impersonation, sleeper and cross-user poisoning flip the decision **89–100%**; Memory Checks hold them
+  all. (Qwen resists chat *hearsay* but trusts uploaded *documents* — an honest model finding.)
+- **A real, unplanted weakness.** With *every planted bug off* (calibration), isolation/deletion/entangled
+  hold at chance — yet Qwen still approves **100%** of fake-notice applications. That is model behaviour,
+  not a planted bug; the action-gate stops it.
+- **Baselines (strictness vs utility).** A prompt-warning and a regex write-filter both leak **100%**;
+  **only Memory Checks block the poison *and* keep 100% legitimate-policy learning**; "paranoid" blocks but
+  stops learning (52%).
+- **Held-out** (unseen canary words + Hindi poison): the defence still holds → not fitted to our evaluator.
+
+**Also tested:** NVIDIA Nemotron 3 Nano (earlier v2-era run; [`RESULTS.md`](RESULTS.md)). **Offline mock**
+(`results/demo-mock-v3.jsonl`, deterministic, runs in CI) proves the wiring, not model behaviour.
 
 **Which check stops which leak** (`python run_ablation.py`, deterministic): turning off the responsible
 check (or checks) brings back exactly one leak.
@@ -162,7 +175,7 @@ Set `LLM_BASE_URL`, `LLM_API_KEY` and `LLM_MODEL` as Space secrets, plus
 | `sahayak/agents.py` | Sahayak: Intake, Verification and Grievance agents; `forget_request`, `xray` |
 | `sahayak/memory.py` | our memory store with the **four planted bugs** (below) |
 | `sahayak/mem0_store.py` | the same interface on the **real Mem0** library, nothing planted |
-| `sahayak/checks.py` | **Memory Checks**: 11 sub-checks, each one switchable for ablation |
+| `sahayak/checks.py` | **Memory Checks**: 14 sub-checks (incl. data-fence, contradiction, fail-closed), each switchable for ablation |
 | `sahayak/erasure.py` | **Verified Erasure**: value resolution, sweep, redaction, tombstones |
 | `web/` | Sahayak page with the Memory X-ray, and the findings page |
 | `mem0_min_repro.py`, `DISCLOSURE.md` | standalone Mem0 reproduction and the disclosure write-up |
@@ -191,19 +204,30 @@ AntiGOAT is an **audit procedure** for *your deployed agent*. What it adds:
 1. **A hypothesis test with a calibrated false-alarm rate.** Coin-flip twin worlds, adapted from one-run
    privacy auditing (Steinke, Nasr and Jagielski, NeurIPS 2023), give an evidence-based verdict, not a
    judge's opinion.
-2. **An adaptive, multilingual (Indic) attacker** that beats a fixed probe list on side-door leaks
-   (offline mock, Checks off: isolation 100% vs 43%, deletion 85% vs 45%).
+2. **An adaptive, multilingual (Indic) attacker**, told the defence, that beats a fixed probe list on
+   side-door leaks (Qwen3-32B, Checks off: isolation 88%, deletion 82%, entangled 94%; the fixed list stays at chance).
 3. **A “must learn” rule**, so over-cautious defences fail too.
-4. **Entangled deletion** as a measured failure class, with Verified Erasure (receipts that carry residue
-   scans, and hashed tombstones) as a fix you can audit.
-5. **A real-library finding** in Mem0, with a resurrection curve.
+4. **Entangled deletion** as a measured failure class, with Verified Erasure (keyed-HMAC tombstones,
+   receipts that carry residue scans) as a fix you can audit.
+5. **A real-library finding** in Mem0, with a resurrection curve, reproduced on **two models**.
+6. **A query-only poisoning suite on unmodified stacks** (nothing planted), compared against baseline
+   defences on a strictness-vs-utility curve, plus a **held-out** run (unseen values + Hindi).
+7. **Runtime governance tools**: provenance view, write-time contradiction detection, source retraction,
+   **leave-one-out attribution** ("which memory caused this decision?") with rollback, and memory
+   data-fencing — each demonstrable live and covered by the test suite.
 
-Ingredients that already existed: canaries, provenance/lineage, deletion receipts, and the observation
-that summaries resurrect data. We cite them rather than claim them.
+Ingredients that already existed (we cite, not claim): canaries, provenance/lineage, deletion receipts,
+instruction/data separation, trust-by-source, and the observation that summaries resurrect data. The
+contribution is combining them into an **auditor with a calibrated false-alarm rate** and measuring it.
 
 ## Honest limitations
 
-- Sahayak's isolation and poisoning leaks come from **planted** bugs. The Mem0 and entangled findings do not.
+- Sahayak's isolation and some poisoning leaks come from **planted** bugs (ablation only). The Mem0 and
+  entangled findings, the held-out run, and the *unplanted* calibration poisoning do not.
+- On unmodified **Mem0**, plain document-poisoning at the decision was **not fully gated** by our wrapper
+  (authority-impersonation was) — our action-gate is enforced in our own store's decision path; fully
+  wrapping Mem0's decision path is future work.
+- The adaptive **chat** injection did not beat Qwen even with checks off; we report that honestly rather than inflate it.
 - ε is a simplified lower bound for balanced coins, not a full differential-privacy audit.
 - Value resolution uses patterns, plus an optional model call. An unusual way of writing a value can be
   missed; the tombstone and the reply guard are the second line of defence.
