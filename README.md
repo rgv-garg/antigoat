@@ -49,9 +49,12 @@ and no API key: `LLM_BASE_URL=mock EMBED_MODEL=hash python scripts/governance_re
 | **Integrity** | Fail-closed (fault-injected) | if the verifier errors, the decision defaults to **reject** — *measured*, not just stated | ✅ reject on injected fault |
 | **Erasure** | Verified Erasure (entity-level, receipt) | "forget my name" removes the value everywhere, redacts the entangled story, receipt residue 0 | ✅ residue 0; 0 copies left |
 
-**14/14 verified.** This is the governance half standing on its own: it covers every pillar *with a
-number behind it*, adds a post-incident auditor and a tamper-evident log, and carries Verified Erasure,
-which no comparable memory layer we know of measures. Full write-up: [`docs/MEMORY_CHECKS.md`](docs/MEMORY_CHECKS.md).
+**16/16 verified** (the 14 above plus two **utility** rows: **0% false-quarantine** of legitimate updates
+and signed policy still learned — the defence doesn't over-block). This is the governance half standing on
+its own: every pillar covered *with a number behind it*, a post-incident auditor, a tamper-evident log,
+and Verified Erasure, which no comparable memory layer we know of measures. The mechanisms also map onto
+**OWASP LLM Top 10, OWASP Agentic Security, MITRE ATLAS, NIST AI RMF, and India's DPDP Act**. Full
+write-up incl. the standards mapping: [`docs/MEMORY_CHECKS.md`](docs/MEMORY_CHECKS.md).
 
 ---
 

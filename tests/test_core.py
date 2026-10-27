@@ -460,7 +460,7 @@ def test_governance_evidence_report_all_pass():
     r = subprocess.run([sys.executable, "scripts/governance_report.py"], cwd=root, env=env,
                        capture_output=True, text=True)
     assert r.returncode == 0, f"governance report had a FAIL:\n{r.stdout[-2000:]}"
-    assert "14/14 mechanisms verified" in r.stdout, r.stdout[-500:]
+    assert "16/16 mechanisms verified" in r.stdout, r.stdout[-500:]
 
 
 def test_mem0_decision_gate_withholds_document_poisoning():

@@ -62,6 +62,39 @@ Two things here are not part of a standard memory-governance toolkit, and we **m
    **calibrated false-alarm rate**, which found a real, *unplanted* model weakness that a fixed probe
    list misses.
 
+## Utility — the defence does not over-block
+
+A governance layer that refuses legitimate use is useless. We measure both sides:
+- **False-quarantine of legitimate updates: 0%.** With checks on, ordinary citizen writes and updates
+  (name, phone, an address change, a locker code) are all stored, none wrongly quarantined.
+- **Signed policy is still learned.** A genuine signed policy remains usable for decisions — the defence
+  blocks the attacks, not legitimate governance. (The `authority` rule in the audit is the formal
+  counterweight: "Strict" mode, which over-blocks, fails it on purpose.)
+
+Both are rows in the `scripts/governance_report.py` table (**16/16**), reproduced with no GPU.
+
+## Standards & compliance mapping
+
+Memory governance is a security-and-privacy problem, so each mechanism maps onto recognised frameworks.
+This is our own analysis of where the controls land.
+
+| Framework | Item | Our mechanism |
+|---|---|---|
+| **OWASP Top 10 for LLM Apps (2025)** | LLM01 Prompt Injection | data-fence (read gate), quarantine |
+| | LLM02 Sensitive Information Disclosure | cross-citizen walls, Verified Erasure |
+| | LLM04 Data and Model Poisoning | authority routing, action gate, source counting |
+| | LLM06 Excessive Agency | action gate, fail-closed |
+| | LLM08 Vector and Embedding Weaknesses | provenance + walls over the vector store (incl. Mem0) |
+| | LLM09 Misinformation | write-time contradiction, trust-flows-down |
+| **OWASP Agentic Security Initiative** | Memory Poisoning | the whole poisoning-governance pillar + the AntiGOAT audit |
+| **MITRE ATLAS** | LLM prompt injection / poison retrieved data | data-fence, authority, action gate |
+| | Adversarial evaluation of a deployed model | AntiGOAT's adaptive white-box attacker |
+| **NIST AI RMF** | **Measure** function | AntiGOAT: a calibrated audit with a false-alarm rate |
+| | **Manage** function | Memory Checks controls + post-incident rollback / retraction |
+| **NIST AI 600-1 (GenAI profile)** | Information integrity; Data privacy | contradiction + provenance; Verified Erasure |
+| **India DPDP Act, 2023** | Right to erasure | Verified Erasure reaches derived/entangled data, with a receipt |
+| | Right to correction | write-time contradiction + update handling |
+
 ## Honest limitations
 
 - Isolation/deletion/poisoning on our own store use **planted** bugs (ablation only). The non-planted

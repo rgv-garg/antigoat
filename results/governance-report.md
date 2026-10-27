@@ -1,6 +1,6 @@
 # Memory Checks - measured governance evidence
 
-*Deterministic (mock model + hash embeddings), reproducible with `LLM_BASE_URL=mock EMBED_MODEL=hash python scripts/governance_report.py`. **14/14 mechanisms verified.** Every row is a measured result, not a design claim.*
+*Deterministic (mock model + hash embeddings), reproducible with `LLM_BASE_URL=mock EMBED_MODEL=hash python scripts/governance_report.py`. **16/16 mechanisms verified.** Every row is a measured result, not a design claim.*
 
 | Pillar | Mechanism | What it guarantees | Result |
 |---|---|---|---|
@@ -18,3 +18,5 @@
 | Integrity | **Tamper-evident write log (keyed HMAC)** | the append-only write log verifies and stores only keyed hashes, never the plaintext secret | PASS (chain_verifies=True; plaintext_in_log=False) |
 | Integrity | **Fail-closed (fault-injected)** | if the verifier errors, the decision defaults to REJECT, not approve (measured by fault injection, not just stated) | PASS (decision when verifier throws = REJECT) |
 | Erasure | **Verified Erasure (entity-level, with receipt)** | 'forget my name' removes the value everywhere, redacts the entangled story, and the signed receipt reports residue 0 | PASS (residue after erase=0; copies left anywhere=0) |
+| Utility | **No false-quarantine of legitimate updates** | ordinary citizen writes and updates are stored, never wrongly quarantined, with checks on | PASS (legitimate messages=5; wrongly quarantined=0 (0% false-quarantine)) |
+| Utility | **Signed policy still learned** | a genuine signed policy remains usable for decisions; the defence does not block everything | PASS (usable signed policies after the defence = 1) |
