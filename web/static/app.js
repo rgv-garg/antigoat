@@ -176,6 +176,43 @@ function render(r){
   if(r.memory) renderMem(r.memory);
   renderFeed(r.checks);
   if("xray" in r) renderXray(r.xray);
+  if(r.governance) renderGov(r.governance);
+}
+
+function renderGov(g){
+  const el = $("#gov"); if(!el) return;
+  const TRUST = {3: "signed official", 2: "the citizen", 1: "uploaded document", 0: "web / untrusted"};
+  if(g.view === "provenance"){
+    if(!(g.rows || []).length){ el.innerHTML = `<p class="gnote">No memories yet.</p>`; return; }
+    el.innerHTML = `<p class="gnote">Every memory, its origin and whether it may drive a decision. Only a <b>signed</b> source is usable.</p>` +
+      `<ul class="glist">` + g.rows.map(r =>
+        `<li><span class="tier t${r.trust_rank}">${esc(TRUST[r.trust_rank] || r.origin)}</span>` +
+        `<span class="gstat ${r.usable_for_decisions ? "ok" : "no"}">${r.usable_for_decisions ? "usable" : "not usable"}</span>` +
+        `<span class="gtext">${esc(r.text)}</span></li>`).join("") + `</ul>`;
+  } else if(g.view === "contradictions"){
+    if(!(g.rows || []).length){ el.innerHTML = `<p class="gnote">No contradictions: no topic holds two conflicting values.</p>`; return; }
+    el.innerHTML = `<p class="gnote">Topics where memory holds two or more conflicting values.</p>` +
+      `<ul class="glist">` + g.rows.map(r =>
+        `<li><span class="tier t1">${esc(r.topic)}</span><span class="gtext">${r.values.map(esc).join(" &ne; ")}</span></li>`).join("") + `</ul>`;
+  } else if(g.view === "why"){
+    const causes = g.caused_by || [];
+    el.innerHTML = `<p class="gnote">Leave-one-out: hide each memory and see which flips the decision. ` +
+      `Current decision: <b>${g.decision ? "approved without proof" : "rejected"}</b>.</p>` +
+      (causes.length ? `<ul class="glist">` + causes.map(c =>
+        `<li><span class="tier t1">caused it</span><span class="gstat no">from ${esc(c.source)}</span>` +
+        `<span class="gtext">${esc(c.text)}</span></li>`).join("") + `</ul>`
+        : `<p class="gnote">No single memory is responsible for the current decision.</p>`);
+  } else if(g.view === "rollback"){
+    el.innerHTML = `<p class="gnote">Quarantined <b>${g.quarantined}</b> memory(ies) (the cause and its derivatives). ` +
+      `Decision now: <b class="${g.decision_after ? "" : "good"}">${g.decision_after ? "still approved" : "rejected — rolled back"}</b>.</p>`;
+  }
+}
+
+async function gov(view){
+  if(!sid) return;
+  const r = await post("/api/governance", {sid, user: who(), pincode: pin(), text: view});
+  if(r.error){ addNote(r.error, "bad"); return; }
+  render(r);
 }
 
 // ------------------------------------------------------------------ actions
@@ -193,7 +230,7 @@ async function newSession(){
   if(r.error){ addNote("Could not start Sahayak: " + r.error, "bad"); return; }
   sid = r.sid; backend = r.backend; setModeline();
   chat.innerHTML = "";
-  addNote(`New Sahayak, empty memory. Checks ${r.checks}, ${backend === "mem0" ? "Mem0 backend" : "Sahayak store"}.`);
+  addNote(`New Sahayak, empty memory. Checks ${r.mode || mode}, ${backend === "mem0" ? "Mem0 backend" : "Sahayak store"}.`);
   addMsg("bot", GREETING);
   render(r);
 }
@@ -316,6 +353,7 @@ document.querySelectorAll("#scenes button").forEach(b => b.onclick = async () =>
   document.querySelectorAll("#scenes button").forEach(x => x.disabled = true);
   try{ await SCENES[b.dataset.scene](); } finally { document.querySelectorAll("#scenes button").forEach(x => x.disabled = false); }
 });
+document.querySelectorAll("#govbtns button").forEach(b => b.onclick = () => gov(b.dataset.view));
 $("#send").onclick = () => send();
 $("#mic").onclick = toggleMic;
 $("#box").addEventListener("keydown", e => { if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); } });

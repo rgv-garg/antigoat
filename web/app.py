@@ -196,7 +196,7 @@ def new_session(x: NewSession):
             oldest = min(_sessions, key=lambda k: _sessions[k]["t"])
             _sessions.pop(oldest, None)
         _sessions[sid] = {"s": s, "tracked": {}, "t": time.time()}
-    return {"sid": sid, "checks": s.checks.label, "backend": backend, "user_id": x.user_id,
+    return {"sid": sid, "mode": s.checks.label, "backend": backend, "user_id": x.user_id,
             "pincode": x.pincode, **_state(_sessions[sid], x.user_id)}
 
 
@@ -327,6 +327,35 @@ def apply(x: ActionIn):
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": f"model call failed: {e}"}, status_code=502)
     return {"decision": d, **_state(st, user)}
+
+
+@app.post("/api/governance")
+def governance(x: ActionIn):
+    """The Memory Checks half, made clickable: provenance (origin + trust of every memory),
+    contradiction detection, and the post-incident auditor (which memory caused the decision,
+    and roll it back). `text` selects the view: provenance | contradictions | why | rollback | retract."""
+    st = _get(x.sid)
+    if st is None:
+        return JSONResponse({"error": "no such session"}, status_code=404)
+    s: Sahayak = st["s"]
+    user = _user(s, x.user, x.pincode)
+    view = (x.text or "provenance").strip().lower()
+    try:
+        if view == "provenance":
+            data = {"view": "provenance", "rows": s.provenance(user)}
+        elif view == "contradictions":
+            data = {"view": "contradictions", "rows": s.contradictions(user)}
+        elif view == "why":
+            data = {"view": "why", **s.why_approved(user)}
+        elif view == "rollback":
+            data = {"view": "rollback", **s.quarantine_cause(user)}
+        elif view == "retract":
+            data = {"view": "retract", **s.retract_source(user, "document")}
+        else:
+            return JSONResponse({"error": f"unknown view {view!r}"}, status_code=400)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"governance call failed: {e}"}, status_code=502)
+    return {"governance": data, **_state(st, user)}
 
 
 @app.post("/api/voice/stt")

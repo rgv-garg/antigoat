@@ -318,13 +318,20 @@ class Sahayak:
         """Consistency / contradiction detection: topics where this citizen's memory holds TWO OR
         MORE different values (a conflicting or hallucinated memory), e.g. two different phone
         numbers or an 'address proof required' that a later note contradicts."""
+        import re
         from sahayak.erasure import TOPICS, normalize, values_in
+        # A contradiction is between the citizen's OWN statements (not an uploaded document or a
+        # signed policy), and only for a topic the memory is actually about - otherwise phone digits
+        # read as a "code" conflict and an uploaded notice as an "address" one.
         items = [it for it in self.store.visible(user_id)
-                 if it.owner == user_id and it.status not in ("deleted",)]
+                 if it.owner == user_id and it.source == "citizen"
+                 and it.status not in ("deleted", "quarantined")]
         out, claimed = [], set()  # a value counts for the FIRST (most specific) topic that matches
-        for t in TOPICS:
+        for t, kw in TOPICS.items():
             seen: dict[str, str] = {}
             for it in items:
+                if not re.search(kw, it.text, re.I):   # memory must be on this topic
+                    continue
                 for v in values_in(it.text, t):
                     n = normalize(v)
                     if n not in claimed:

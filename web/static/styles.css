@@ -174,6 +174,26 @@ mark{background:var(--glow);color:var(--film);font-weight:700;padding:0 3px;bord
 .mi.probation .meta::after{content:" (on probation: not trusted for decisions)"}
 .feed li{font-size:14px}
 .feed .d-write{color:#8FE0B9}.feed .d-no{color:#F3A3A3}.feed .d-probation{color:#F2D9A6}
+.governance{margin-top:22px;border-top:1px solid rgba(169,189,204,.18);padding-top:10px}
+.governance summary{cursor:pointer;color:var(--glow);font-weight:600}
+.govbtns{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.govbtns button{border:1px solid var(--film-3);background:rgba(24,58,85,.7);color:var(--glow);
+  border-radius:var(--radius-s);padding:6px 11px;cursor:pointer;font-size:14px;font-weight:500}
+.govbtns button:hover{background:var(--film-3)}
+.gnote{margin:6px 0 10px;font-size:14px;color:#C6D6E2;line-height:1.45}
+.glist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.glist li{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:7px 10px;border-radius:var(--radius-s);
+  background:rgba(17,43,64,.6);font-size:14px;color:#E4EDF4}
+.glist .gtext{flex:1 1 60%;min-width:0;color:#E4EDF4}
+.tier{font-size:12px;font-weight:600;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.tier.t3{background:var(--safe-soft);color:#0A5A3A}
+.tier.t2{background:#DDE8F2;color:#1E3A5A}
+.tier.t1{background:var(--marigold);color:var(--marigold-ink)}
+.tier.t0{background:var(--leak-soft);color:#8A1E1E}
+.gstat{font-size:12px;font-weight:600;white-space:nowrap}
+.gstat.ok{color:#8FE0B9}
+.gstat.no{color:#F3A3A3}
+.gov b.good{color:#8FE0B9}
 .model{margin-top:18px;font-size:13px;color:var(--film-dim)}
 
 /* ---------------------------------------------------------------- report page */

@@ -99,6 +99,16 @@
       <summary>Stored memories <span id="memcount" class="count"></span></summary>
       <ol id="mem" class="mem"></ol>
     </details>
+    <details class="governance" id="govwrap">
+      <summary>Memory Checks &mdash; governance</summary>
+      <div class="govbtns" id="govbtns">
+        <button type="button" data-view="provenance" title="Origin and trust rank of every stored memory">Provenance</button>
+        <button type="button" data-view="contradictions" title="Topics where memory holds two conflicting values">Contradictions</button>
+        <button type="button" data-view="why" title="Leave-one-out: which memory caused the current decision?">Why approved?</button>
+        <button type="button" data-view="rollback" title="Quarantine the memory that caused a bad decision, and flip it back">Roll back</button>
+      </div>
+      <div id="gov" class="gov"></div>
+    </details>
     <details class="activity" id="feedwrap">
       <summary>Memory Checks activity</summary>
       <ol id="feed" class="feed"></ol>
