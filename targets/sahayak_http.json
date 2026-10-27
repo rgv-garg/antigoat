@@ -1,0 +1,64 @@
+{
+  "name": "sahayak-over-http",
+  "label": "as-deployed",
+  "base_url": "http://127.0.0.1:8300",
+  "timeout": 300,
+  "endpoints": {
+    "chat": {
+      "path": "/chat",
+      "body": {
+        "user": "{user}",
+        "message": "{message}",
+        "channel": "{channel}"
+      },
+      "reply": "reply"
+    },
+    "end_session": {
+      "path": "/end",
+      "body": {
+        "user": "{user}"
+      }
+    },
+    "register": {
+      "path": "/register",
+      "body": {
+        "user": "{user}",
+        "pincode": "{pincode}"
+      }
+    },
+    "upload": {
+      "path": "/upload",
+      "body": {
+        "user": "{user}",
+        "text": "{text}"
+      }
+    },
+    "decide": {
+      "path": "/apply",
+      "body": {
+        "user": "{user}",
+        "proof": "{proof}"
+      },
+      "approved": "approved"
+    },
+    "admin": {
+      "path": "/admin_policy",
+      "body": {
+        "text": "{text}"
+      }
+    },
+    "reset": {
+      "path": "/reset"
+    },
+    "probe": {
+      "path": "/chat",
+      "reply": "reply",
+      "body": {
+        "user": "{user}",
+        "message": "{message}",
+        "channel": "{channel}",
+        "remember": false
+      }
+    }
+  }
+}

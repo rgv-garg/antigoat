@@ -1,0 +1,11 @@
+{
+  "name": "any-openai-compatible-chat-agent",
+  "label": "as-deployed",
+  "base_url": "http://127.0.0.1:8300",
+  "timeout": 300,
+  "endpoints": {
+    "chat": {"path": "/v1/chat/completions",
+             "body": {"model": "agent", "user": "{user}", "messages": [{"role": "user", "content": "{message}"}]},
+             "reply": "choices.0.message.content"}
+  }
+}

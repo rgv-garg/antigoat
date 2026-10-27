@@ -1,0 +1,13 @@
+08:34:17 === Memory Checks: base_prompt ===
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 5672.08it/s]
+08:34:30 planted 150 slots, memory has 243 items
+08:34:30 [base_prompt] checkpoint 0 sessions, memory 243 items
+08:34:35   inject_adaptive decision done (0 learn + 150 score slots)
+08:34:46 [base_prompt] checkpoint 1 sessions, memory 543 items
+08:34:52   inject_adaptive decision done (0 learn + 150 score slots)
+08:34:52 done in 35.2s -> results/20261027-083417-g2-qwen8-ours-adaptive-base_prompt-ba5f.jsonl
+
+rule       checks    attacker  sess    n    acc        95% CI         p  eps>=  verdict
+inject_adaptive base_prompt decision     0  150   0.48 [0.40, 0.56]  7.16e-01   0.00  PASS
+inject_adaptive base_prompt decision     1  150   0.48 [0.40, 0.56]  7.16e-01   0.00  PASS

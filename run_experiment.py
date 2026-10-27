@@ -7,6 +7,9 @@ Examples
   # the full overnight run on Brev (set .env to the Brev endpoint first):
   python run_experiment.py --slots 200 --sessions 0,1,5,10 --checks off,on,paranoid --attackers goal,fixed --tag full
 
+  # audit ANY agent over HTTP (no access to its code or memory):
+  python run_experiment.py --target targets/reference_agent.json --rules isolation,deletion,entangled --slots 40
+
   # strong-attacker bonus run (attacker = hosted Nemotron 3 Super, set ATTACKER_* in .env):
   python run_experiment.py --rules isolation,deletion --slots 60 --sessions 0,5 --checks off,on --tag super
 """
@@ -35,8 +38,12 @@ def main() -> None:
                    help="held-out eval: unseen canary values + Hindi poison (sets ANTIGOAT_HELDOUT=1)")
     p.add_argument("--tag", default="")
     p.add_argument("--out-dir", default="results")
-    p.add_argument("--backend", default="ours", choices=["ours", "mem0"],
-                   help="ours = Sahayak's store with planted bugs; mem0 = real Mem0 OSS (pip install -r requirements-mem0.txt)")
+    p.add_argument("--backend", default="ours", choices=["ours", "mem0", "langgraph"],
+                   help="Sahayak's memory: ours = our store with planted bugs (ablation); mem0 = real Mem0 OSS; "
+                        "langgraph = LangGraph's BaseStore (both real libraries, nothing planted)")
+    p.add_argument("--target", default="",
+                   help="audit ANY agent instead of Sahayak: a JSON target spec (see targets/). "
+                        "Runs once 'as deployed'; rules needing a capability the agent lacks are skipped")
     a = p.parse_args()
     if a.held_out:
         import os
@@ -45,7 +52,7 @@ def main() -> None:
     cfg = RunConfig(
         rules=a.rules.split(","), slots=a.slots, sessions=[int(x) for x in a.sessions.split(",")],
         checks=a.checks.split(","), attackers=a.attackers.split(","), seed=a.seed,
-        learn_frac=a.learn_frac, turns=a.turns, bg_sample=a.bg_sample, tag=a.tag, out_dir=a.out_dir, backend=a.backend,
+        learn_frac=a.learn_frac, turns=a.turns, bg_sample=a.bg_sample, tag=a.tag, out_dir=a.out_dir, backend=a.backend, target=a.target,
     )
     if a.no_bugs:
         cfg.bugs = {k: False for k in cfg.bugs}

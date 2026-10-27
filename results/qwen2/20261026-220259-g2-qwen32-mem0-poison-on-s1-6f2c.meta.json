@@ -1,0 +1,56 @@
+{
+  "run_id": "20261026-220259-g2-qwen32-mem0-poison-on-s1-6f2c",
+  "config": {
+    "rules": [
+      "poisoning",
+      "inject_chat",
+      "inject_consolidate",
+      "inject_authority",
+      "inject_overwrite",
+      "inject_sleeper",
+      "inject_crossuser"
+    ],
+    "slots": 80,
+    "sessions": [
+      0,
+      1,
+      5
+    ],
+    "checks": [
+      "on"
+    ],
+    "attackers": [
+      "goal"
+    ],
+    "seed": 1,
+    "learn_frac": 0.2,
+    "turns": 3,
+    "abstain_below": 0.6,
+    "bg_sample": 1.0,
+    "bugs": {
+      "shared_index": true,
+      "soft_delete": true,
+      "doc_as_rule": true,
+      "guardrail_gap": true
+    },
+    "out_dir": "results",
+    "backend": "mem0",
+    "tag": "g2-qwen32-mem0-poison-on-s1"
+  },
+  "sahayak_model": "target",
+  "attacker_model": "target",
+  "embed_model": "BAAI/bge-m3",
+  "backend": "mem0",
+  "extract_mode": "llm",
+  "verify_mode": "llm",
+  "started": 1793052179.9165301,
+  "finished": 1793052593.886196,
+  "seconds": 414.0,
+  "usage": {
+    "sahayak_calls": 7920,
+    "attacker_calls": 0,
+    "prompt_tokens": 28692307,
+    "completion_tokens": 410051
+  },
+  "strategy_libraries": {}
+}

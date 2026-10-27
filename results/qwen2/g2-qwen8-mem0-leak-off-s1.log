@@ -1,0 +1,55 @@
+01:37:10 === Memory Checks: off ===
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 6072.94it/s]
+Failed to load spaCy lemma model: spaCy is not installed. Install it with: pip install mem0ai[nlp]
+fastembed not installed - BM25 keyword search disabled. Install it with: pip install "mem0ai[extras]"
+Failed to load spaCy full model: spaCy is not installed. Install it with: pip install mem0ai[nlp]
+01:37:28 planted 160 slots, memory has 93 items
+01:37:28 [off] checkpoint 0 sessions, memory 93 items
+01:40:51   deletion   goal     done (16 learn + 64 score slots)
+01:44:18   entangled  goal     done (16 learn + 64 score slots)
+01:44:33 [off] checkpoint 1 sessions, memory 261 items
+01:48:00   deletion   goal     done (16 learn + 64 score slots)
+01:51:26   entangled  goal     done (16 learn + 64 score slots)
+01:52:43 [off] checkpoint 5 sessions, memory 843 items
+Traceback (most recent call last):
+  File "/home/ubuntu/antigoat/run_experiment.py", line 67, in <module>
+    main()
+  File "/home/ubuntu/antigoat/run_experiment.py", line 52, in main
+    path = run(cfg)
+           ^^^^^^^^
+  File "/home/ubuntu/antigoat/antigoat/runner.py", line 108, in run
+    for slot, res in ex.map(audit, phase):
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 619, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 317, in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/usr/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/antigoat/antigoat/runner.py", line 103, in audit
+    res = atk.run(sah.fork(), spec, slot)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/antigoat/antigoat/attacker.py", line 159, in run
+    s.upload(user, msg)
+  File "/home/ubuntu/antigoat/sahayak/agents.py", line 182, in upload
+    self.store.upload_document(user_id, doc_text)
+  File "/home/ubuntu/antigoat/sahayak/mem0_store.py", line 205, in upload_document
+    self.ingest(owner, f"[uploaded document] {text}", source="document", btype=btype)
+  File "/home/ubuntu/antigoat/sahayak/mem0_store.py", line 185, in ingest
+    self._track(self.m.add([{"role": "user", "content": message}], user_id=owner, metadata=md, infer=True), owner)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/venv/lib/python3.12/site-packages/mem0/memory/main.py", line 871, in add
+    vector_store_result = self._add_to_vector_store(messages, processed_metadata, effective_filters, infer, prompt=prompt)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/venv/lib/python3.12/site-packages/mem0/memory/main.py", line 994, in _add_to_vector_store
+    mem_texts = [m.get("text", "") for m in extracted_memories if m.get("text")]
+                                                                  ^^^^^
+AttributeError: 'str' object has no attribute 'get'

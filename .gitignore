@@ -17,4 +17,7 @@ venv/
 results/nemotron/
 results/qwen/
 
-results/qwen2/
+# public benchmark data (fetched by scripts/fetch_*.sh, not committed)
+data/external/
+.hypothesis/
+.impeccable/

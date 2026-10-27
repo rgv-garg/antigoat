@@ -1,0 +1,34 @@
+{
+  "name": "reference-memory-agent",
+  "label": "as-deployed",
+  "base_url": "http://127.0.0.1:8400",
+  "timeout": 300,
+  "endpoints": {
+    "chat": {
+      "path": "/chat",
+      "body": {
+        "user": "{user}",
+        "message": "{message}"
+      },
+      "reply": "reply"
+    },
+    "end_session": {
+      "path": "/end",
+      "body": {
+        "user": "{user}"
+      }
+    },
+    "reset": {
+      "path": "/reset"
+    },
+    "probe": {
+      "path": "/chat",
+      "reply": "reply",
+      "body": {
+        "user": "{user}",
+        "message": "{message}",
+        "remember": false
+      }
+    }
+  }
+}

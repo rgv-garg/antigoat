@@ -1,0 +1,16 @@
+07:34:47 === Memory Checks: on ===
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 6089.06it/s]
+Failed to load spaCy lemma model: spaCy is not installed. Install it with: pip install mem0ai[nlp]
+fastembed not installed - BM25 keyword search disabled. Install it with: pip install "mem0ai[extras]"
+Failed to load spaCy full model: spaCy is not installed. Install it with: pip install mem0ai[nlp]
+07:35:04 planted 100 slots, memory has 0 items
+07:35:04 [on] checkpoint 0 sessions, memory 0 items
+07:35:06   inject_adaptive decision done (0 learn + 100 score slots)
+07:35:13 [on] checkpoint 1 sessions, memory 100 items
+07:35:15   inject_adaptive decision done (0 learn + 100 score slots)
+07:35:15 done in 28.0s -> results/20261027-073447-g2-qwen8-mem0-adaptive-on-08fe.jsonl
+
+rule       checks    attacker  sess    n    acc        95% CI         p  eps>=  verdict
+inject_adaptive on        decision     0  100   0.52 [0.42, 0.62]  3.82e-01   0.00  PASS
+inject_adaptive on        decision     1  100   0.48 [0.38, 0.58]  6.91e-01   0.00  PASS

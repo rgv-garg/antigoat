@@ -5,6 +5,8 @@
 #   tmux new -s llm
 #   bash scripts/serve_model.sh                      # Qwen3.8-27B
 #   MODEL=google/gemma-4-31B-it bash scripts/serve_model.sh   # another family for the model sweep
+#   MODEL=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 GPU_UTIL=0.88 EXTRA_ARGS="--trust-remote-code" \
+#       bash scripts/serve_model.sh                          # NVIDIA's Nemotron (3rd model family)
 # Settings: --max-model-len 16384 (prompts are short; leaves KV-cache room for many parallel
 # conversations). GPU_UTIL=0.70 by default: the experiments run bge-m3 embeddings on the SAME
 # GPU, and at 0.88 a 64-thread run hit CUDA out-of-memory. Qwen3-32B-FP8 weights are ~33 GB,
@@ -20,4 +22,4 @@ exec vllm serve "$MODEL" \
   --max-model-len 16384 \
   --gpu-memory-utilization "${GPU_UTIL:-0.70}" \
   --max-num-seqs 128 \
-  --host 0.0.0.0 --port 8000
+  --host 0.0.0.0 --port 8000 ${EXTRA_ARGS:-}

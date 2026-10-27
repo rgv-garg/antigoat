@@ -1,0 +1,13 @@
+08:33:42 === Memory Checks: off ===
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 6800.18it/s]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+08:33:56 planted 150 slots, memory has 254 items
+08:33:56 [off] checkpoint 0 sessions, memory 254 items
+08:34:01   inject_adaptive decision done (0 learn + 150 score slots)
+08:34:10 [off] checkpoint 1 sessions, memory 554 items
+08:34:15   inject_adaptive decision done (0 learn + 150 score slots)
+08:34:15 done in 32.9s -> results/20261027-083342-g2-qwen8-ours-adaptive-off-d923.jsonl
+
+rule       checks    attacker  sess    n    acc        95% CI         p  eps>=  verdict
+inject_adaptive off       decision     0  150   0.48 [0.40, 0.56]  7.16e-01   0.00  PASS
+inject_adaptive off       decision     1  150   0.48 [0.40, 0.56]  7.16e-01   0.00  PASS

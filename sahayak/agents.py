@@ -18,9 +18,10 @@ import threading
 from config import SETTINGS
 from llm import chat as llm_chat
 from llm import parse_json
-from sahayak.checks import MemoryChecks, sign
-from sahayak.erasure import MASK, pattern, resolve
-from sahayak.memory import GLOBAL, MemoryStore
+from memorychecks import governance
+from memorychecks.checks import MemoryChecks, sign
+from memorychecks.erasure import MASK, pattern, resolve
+from memorychecks.store import GLOBAL, MemoryStore
 
 _SECRET_RE = re.compile(r"\b[a-z]+-\d{4}\b", re.I)
 _EVERYTHING_RE = re.compile(r"\b(everything|all (?:my|the) (?:details|records|messages|stories)|summari[sz]e|whole record|"
@@ -67,6 +68,36 @@ Reply with JSON only: {{"reason": "one sentence", "approved": true or false}}"""
 
 GATED = "(withheld by Memory Checks: only signed UIDAI policy may change a decision)"
 
+# "please forget ..." in English / Hindi / Hinglish (Hinglish is spelled many ways: bhool/bhul,
+# jao/jaiye). A plain "main bhool gaya" (I forgot) is not an erasure request, and neither is a
+# negated one: "don't erase my name" must NOT erase it.
+FORGET_INTENT = re.compile(
+    r"\b(forget|delete|erase|remove|wipe)\b"
+    r"|\bbh(?:oo|u)l\s*ja(?:o|ao|iye|iyega|na|)\b"
+    r"|\bbh(?:oo|u)la\s*(?:do|dijiye|dijiyega|de|dena)\b"
+    r"|\b(?:mita|mitaa|hata|hataa|nikal|nikaal)\s*(?:do|dijiye|dijiyega|de|dena)\b"
+    r"|भूल\s*जा|भुला\s*द|मिटा\s*द|हटा\s*द|निकाल\s*द", re.I)
+_NEGATED_FORGET = re.compile(
+    r"\b(?:don'?t|do\s+not|never|please\s+don'?t|no\s+need\s+to|mat|nahi|na)\s+(?:\w+\s+){0,3}?"
+    r"(?:forget|delete|erase|remove|wipe|bh(?:oo|u)l|mita|hata)", re.I)
+
+
+def is_forget_request(message: str) -> bool:
+    """True when the user is asking the agent to erase something (and not saying 'don't')."""
+    return bool(FORGET_INTENT.search(message)) and not _NEGATED_FORGET.search(message)
+
+
+def forget_reply(ev: dict) -> str:
+    """A reply to an erasure request that never repeats the erased value (an echo would itself
+    be a new copy of it)."""
+    what = " / ".join(ev.get("topics") or []) or ("the detail you mentioned" if ev.get("n_values") else "that")
+    if not ev.get("removed"):
+        return "I could not find a saved detail matching that to erase."
+    if ev.get("mode") == "verified-erasure":
+        return (f"Done - I have erased your {what} from every place I had it ({ev['removed']} record(s)), "
+                f"and I will not store it again unless you tell me yourself.")
+    return f"Done - I have deleted {ev['removed']} saved detail(s) about your {what}."
+
 
 def _mask(v: str) -> str:
     """Show a value without repeating it: 'Teja' -> 'T***', '9876543210' -> '98******10'."""
@@ -84,8 +115,13 @@ class Sahayak:
                  backend: str = "ours"):
         self.checks = store.checks if store else MemoryChecks.from_spec(checks_mode)
         if store is None and backend == "mem0":
-            from sahayak.mem0_store import Mem0Store  # real open-source Mem0, no planted bugs
+            from memorychecks.mem0_store import Mem0Store  # real open-source Mem0, no planted bugs
             store = Mem0Store(self.checks)
+        elif store is None and backend == "langgraph":
+            from memorychecks.langgraph_store import LangGraphStore  # LangGraph's BaseStore, no planted bugs
+            store = LangGraphStore(self.checks)
+        elif store is None and backend not in ("ours", ""):
+            raise ValueError(f"unknown memory backend {backend!r}: use ours | mem0 | langgraph")
         self.store = store if store is not None else MemoryStore(self.checks, bugs)
         self.tool_log: list[dict] = []
         self.profiles: dict[str, dict] = {}  # user_id -> {"pincode": ...}
@@ -99,7 +135,9 @@ class Sahayak:
 
     @property
     def backend(self) -> str:
-        return "mem0" if getattr(self.store, "is_mem0", False) else "ours"
+        if getattr(self.store, "is_mem0", False):
+            return "mem0"
+        return "langgraph" if getattr(self.store, "is_langgraph", False) else "ours"
 
     # ------------------------------------------------------------------ citizen-facing
     def register(self, user_id: str, pincode: str) -> None:
@@ -183,6 +221,22 @@ class Sahayak:
             rec = {"contradiction": c["topic"], "values": c["values"][:4]}
             if rec not in self.checks.log:
                 self.checks.log.append(rec)
+
+    def converse(self, user_id: str, message: str, agent: str = "intake") -> str:
+        """The black-box entry point: one user message in, one reply out, exactly what an outside
+        user (or AntiGOAT over HTTP) can do. Erasure requests are handled here, in conversation,
+        like a real assistant; everything else is a normal remembered turn."""
+        if is_forget_request(message):
+            ev = self.forget_request(user_id, message)
+            with self._lock:  # keep the visit's context in order; the reply never holds the value
+                said = message
+                if self.checks.feature("entity_erasure"):
+                    for v in ev.get("_values", []):
+                        said = pattern(v).sub(MASK, said)
+                self.history.setdefault(user_id, []).extend(
+                    [{"role": "user", "content": said}, {"role": "assistant", "content": forget_reply(ev)}])
+            return forget_reply(ev)
+        return self.chat(user_id, message, agent=agent, history=True)
 
     def say(self, user_id: str, message: str) -> None:
         """A citizen tells Sahayak something in normal conversation. With SAHAYAK_EXTRACT=llm the
@@ -299,102 +353,35 @@ class Sahayak:
         return loc
 
     # ------------------------------------------------------------------ governance views
+    # ------------------------------------------------------------------ governance (memorychecks)
+    # Sahayak uses the library's governance tools; see memorychecks/governance.py.
     def provenance(self, user_id: str) -> list[dict]:
-        """Provenance tracking: every memory this citizen has, with WHERE it came from and HOW
-        trusted that origin is - the PS's 'verify the origin and trustworthiness of stored info'."""
-        tr = self.checks.TRUST_RANK
-        tier = {3: "signed official", 2: "the citizen", 1: "an uploaded document", 0: "the web / untrusted"}
-        out = []
-        for it in self.store.visible(user_id):
-            if it.owner not in (user_id, GLOBAL):
-                continue
-            rank = tr.get(it.source, 0)
-            out.append({"text": it.text[:140], "source": it.source, "trust_rank": rank,
-                        "origin": tier.get(rank, "unknown"), "status": it.status, "btype": it.btype,
-                        "usable_for_decisions": self.checks.usable_for_action(it)})
-        return out
+        """Provenance tracking: where each memory came from and how far it may be trusted."""
+        return governance.provenance(self, user_id)
 
     def contradictions(self, user_id: str) -> list[dict]:
-        """Consistency / contradiction detection: topics where this citizen's memory holds TWO OR
-        MORE different values (a conflicting or hallucinated memory), e.g. two different phone
-        numbers or an 'address proof required' that a later note contradicts."""
-        import re
-        from sahayak.erasure import TOPICS, normalize, values_in
-        # A contradiction is between the citizen's OWN statements (not an uploaded document or a
-        # signed policy), and only for a topic the memory is actually about - otherwise phone digits
-        # read as a "code" conflict and an uploaded notice as an "address" one.
-        items = [it for it in self.store.visible(user_id)
-                 if it.owner == user_id and it.source == "citizen"
-                 and it.status not in ("deleted", "quarantined")]
-        out, claimed = [], set()  # a value counts for the FIRST (most specific) topic that matches
-        for t, kw in TOPICS.items():
-            seen: dict[str, str] = {}
-            for it in items:
-                if not re.search(kw, it.text, re.I):   # memory must be on this topic
-                    continue
-                for v in values_in(it.text, t):
-                    n = normalize(v)
-                    if n not in claimed:
-                        seen.setdefault(n, v)
-            if len(seen) >= 2:
-                out.append({"topic": t, "values": list(seen.values())})
-                claimed |= set(seen)
-        return out
+        """Consistency: topics where the citizen's own memory holds conflicting values."""
+        return governance.contradictions(self, user_id)
 
     def attribute(self, user_id: str, decide) -> dict:
-        """Leave-one-out memory attribution: WHICH stored memory caused this decision? Re-run
-        `decide` with each of the citizen's memories hidden one at a time; a memory is a cause if
-        hiding it flips the outcome. This is AntiGOAT's own twin-world idea turned into a runtime,
-        post-incident tool - the forensic answer to 'why did the agent approve this?'. (Works on our
-        store; Mem0's fork is shared.)"""
-        if getattr(self.store, "is_mem0", False):
-            return {"decision": decide(self), "caused_by": [], "note": "per-item replay needs our store"}
-        base = decide(self)
-        causes = []
-        for it in [m for m in self.store.visible(user_id) if m.owner in (user_id, GLOBAL)]:
-            fk = self.fork()
-            with fk.store._lock:
-                fk.store.items.pop(it.id, None)
-            if decide(fk) != base:
-                causes.append({"id": it.id, "text": it.text[:140], "source": it.source, "status": it.status})
-        return {"decision": base, "caused_by": causes}
+        """Leave-one-out attribution: which stored memory caused this decision?"""
+        return governance.attribute(self, user_id, decide)
 
     def why_approved(self, user_id: str) -> dict:
         """Attribute an address-waiver approval to the memory/policy that caused it."""
         return self.attribute(user_id, lambda s: s.apply(user_id, has_address_proof=False)["approved"])
 
     def _quarantine(self, seed_ids) -> int:
-        """Mark these memories and everything derived ONLY from them as quarantined (our store)."""
-        import dataclasses
-        if getattr(self.store, "is_mem0", False):
-            return 0
-        with self.store._lock:
-            items = self.store.items
-            bad = set(seed_ids) & set(items)
-            changed = True
-            while changed:  # a memory whose every parent is quarantined is quarantined too
-                changed = False
-                for i, it in items.items():
-                    if i not in bad and it.parents and all(p in bad for p in it.parents):
-                        bad.add(i); changed = True
-            for i in bad:
-                items[i] = dataclasses.replace(items[i], status="quarantined")
-        return len(bad)
+        return governance.quarantine(self.store, seed_ids)
 
     def retract_source(self, user_id: str, source: str) -> dict:
-        """Trust maintenance: a source is judged untrustworthy -> quarantine every memory from it,
-        and everything derived only from it, while leaving independently-supported memories active."""
-        seeds = [it.id for it in self.store.visible(user_id)
-                 if it.owner in (user_id, GLOBAL) and it.source == source]
-        return {"retracted_source": source, "quarantined": self._quarantine(seeds)}
+        """Trust maintenance: quarantine everything a now-untrusted source supports."""
+        return governance.retract_source(self, user_id, source)
 
     def quarantine_cause(self, user_id: str, decide=None) -> dict:
-        """Post-incident rollback: find the memory that caused a bad decision (leave-one-out) and
-        quarantine it plus its derivatives, then confirm the decision no longer stands."""
+        """Post-incident rollback: quarantine the cause of a bad decision and confirm it flips."""
         decide = decide or (lambda s: s.apply(user_id, has_address_proof=False)["approved"])
-        r = self.attribute(user_id, decide)
-        n = self._quarantine([c["id"] for c in r["caused_by"] if "id" in c])
-        return {**r, "quarantined": n, "decision_after": decide(self)}
+        return governance.quarantine_cause(self, user_id, decide)
 
     # ------------------------------------------------------------------ Verification agent
     def apply(self, user_id: str, has_address_proof: bool) -> dict:

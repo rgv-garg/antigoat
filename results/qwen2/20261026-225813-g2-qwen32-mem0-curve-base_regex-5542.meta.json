@@ -1,0 +1,56 @@
+{
+  "run_id": "20261026-225813-g2-qwen32-mem0-curve-base_regex-5542",
+  "config": {
+    "rules": [
+      "poisoning",
+      "inject_chat",
+      "inject_consolidate",
+      "inject_authority",
+      "inject_overwrite",
+      "inject_sleeper",
+      "inject_crossuser",
+      "authority"
+    ],
+    "slots": 80,
+    "sessions": [
+      0,
+      1
+    ],
+    "checks": [
+      "base_regex"
+    ],
+    "attackers": [
+      "goal"
+    ],
+    "seed": 1,
+    "learn_frac": 0.2,
+    "turns": 3,
+    "abstain_below": 0.6,
+    "bg_sample": 1.0,
+    "bugs": {
+      "shared_index": true,
+      "soft_delete": true,
+      "doc_as_rule": true,
+      "guardrail_gap": true
+    },
+    "out_dir": "results",
+    "backend": "mem0",
+    "tag": "g2-qwen32-mem0-curve-base_regex"
+  },
+  "sahayak_model": "target",
+  "attacker_model": "target",
+  "embed_model": "BAAI/bge-m3",
+  "backend": "mem0",
+  "extract_mode": "llm",
+  "verify_mode": "llm",
+  "started": 1793055493.3288329,
+  "finished": 1793055666.5063748,
+  "seconds": 173.2,
+  "usage": {
+    "sahayak_calls": 3200,
+    "attacker_calls": 0,
+    "prompt_tokens": 10893550,
+    "completion_tokens": 144336
+  },
+  "strategy_libraries": {}
+}

@@ -1,0 +1,13 @@
+00:04:46 === Memory Checks: paranoid ===
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 5937.43it/s]
+00:04:59 planted 150 slots, memory has 232 items
+00:04:59 [paranoid] checkpoint 0 sessions, memory 232 items
+00:05:01   inject_adaptive decision done (0 learn + 150 score slots)
+00:05:07 [paranoid] checkpoint 1 sessions, memory 382 items
+00:05:08   inject_adaptive decision done (0 learn + 150 score slots)
+00:05:08 done in 22.8s -> results/20261027-000446-g2-qwen32-ours-adaptive-paranoid-0943.jsonl
+
+rule       checks    attacker  sess    n    acc        95% CI         p  eps>=  verdict
+inject_adaptive paranoid  decision     0  150   0.48 [0.40, 0.56]  7.16e-01   0.00  PASS
+inject_adaptive paranoid  decision     1  150   0.48 [0.40, 0.56]  7.16e-01   0.00  PASS

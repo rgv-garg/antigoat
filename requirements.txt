@@ -10,3 +10,6 @@ fastapi>=0.110
 uvicorn>=0.29
 pytest>=8.0
 python-multipart>=0.0.9
+langgraph>=1.0          # 3rd memory backend (LangGraph's BaseStore) + the reference agent
+httpx>=0.27             # in-process HTTP tests of black-box targets
+hypothesis>=6.100       # property-checked invariants (tests/test_invariants.py)

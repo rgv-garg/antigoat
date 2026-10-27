@@ -31,7 +31,7 @@ from antigoat.runner import load
 from antigoat.stats import scorecard
 from antigoat.worlds import RULES
 from config import SETTINGS
-from sahayak.agents import Sahayak
+from sahayak.agents import Sahayak, is_forget_request
 from sahayak.erasure import pattern
 
 STATIC = Path(__file__).parent / "static"
@@ -42,17 +42,6 @@ app = FastAPI(title="AntiGOAT")
 _sessions: dict[str, dict] = {}   # sid -> {"s": Sahayak, "tracked": {user: {...}}, "t": last use}
 _lock = threading.Lock()
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "60"))
-
-# "please forget ..." in English / Hindi / Hinglish. Hinglish is spelled many ways
-# (bhool/bhul, jao/jaiye), so match the stem + an imperative ending, not one exact spelling.
-# A plain "main bhool gaya" (I forgot) is NOT an erasure request.
-_FORGET_RE = re.compile(
-    r"\b(forget|delete|erase|remove|wipe)\b"
-    r"|\bbh(?:oo|u)l\s*ja(?:o|ao|iye|iyega|na|)\b"
-    r"|\bbh(?:oo|u)la\s*(?:do|dijiye|dijiyega|de|dena)\b"
-    r"|\b(?:mita|mitaa|hata|hataa|nikal|nikaal)\s*(?:do|dijiye|dijiyega|de|dena)\b"
-    r"|भूल\s*जा|भुला\s*द|मिटा\s*द|हटा\s*द|निकाल\s*द", re.I)
-
 
 def _mem0_available() -> bool:
     try:
@@ -210,7 +199,7 @@ def chat(x: ChatIn):
     agent = x.agent if x.agent in {"intake", "grievance"} else "intake"
     try:
         # Natural-language erasure: a citizen who can't read just SAYS "forget my number".
-        if _FORGET_RE.search(x.message):
+        if is_forget_request(x.message):
             ev = s.forget_request(user, x.message)
             if ev["_values"] or ev["removed"]:
                 st["tracked"][user] = {"values": ev["_values"], "topic": " / ".join(ev["topics"]) or "detail",

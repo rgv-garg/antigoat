@@ -1,0 +1,13 @@
+00:04:17 === Memory Checks: on ===
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 6051.76it/s]
+00:04:31 planted 150 slots, memory has 241 items
+00:04:31 [on] checkpoint 0 sessions, memory 241 items
+00:04:33   inject_adaptive decision done (0 learn + 150 score slots)
+00:04:43 [on] checkpoint 1 sessions, memory 541 items
+00:04:44   inject_adaptive decision done (0 learn + 150 score slots)
+00:04:44 done in 27.0s -> results/20261027-000417-g2-qwen32-ours-adaptive-on-1541.jsonl
+
+rule       checks    attacker  sess    n    acc        95% CI         p  eps>=  verdict
+inject_adaptive on        decision     0  150   0.48 [0.40, 0.56]  7.16e-01   0.00  PASS
+inject_adaptive on        decision     1  150   0.48 [0.40, 0.56]  7.16e-01   0.00  PASS
