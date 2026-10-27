@@ -53,9 +53,17 @@ AUTHORITY: dict[str, dict[str, str]] = {
 INTERNAL_TYPES = {"conversation", "summary", "document"}
 
 # All sub-checks that can be toggled for ablation.
+#   data_fence  retrieved memory is enclosed in a random per-reply marker and the agent is told to
+#               answer from the facts inside it but not to carry out any command written there, so a
+#               planted memory cannot be read as part of the prompt's own directions.
+#   contradiction  at write time, a new fact that conflicts with an existing one for the same
+#                  topic (two different phone numbers, etc.) is logged as a conflict to resolve,
+#                  so a hallucinated or planted memory does not silently sit beside the true one.
+#   fail_closed    if a check or the verifier errors out, the decision defaults to REJECT (and a
+#                  write to quarantine) rather than being waved through.
 ALL_CHECKS = ("authority", "walls", "action_gate", "hard_delete", "source_count",
               "lineage_trust", "slow_poison", "hash_chain", "quarantine",
-              "entity_erasure", "tombstone")
+              "entity_erasure", "tombstone", "data_fence", "contradiction", "fail_closed")
 # Memory Checks v2 (before the entangled-deletion finding) = v3 without these two.
 V3_CHECKS = ("entity_erasure", "tombstone")
 

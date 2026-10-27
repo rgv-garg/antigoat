@@ -16,3 +16,5 @@ venv/
 # raw run files copied from the Brev boxes (large; not committed)
 results/nemotron/
 results/qwen/
+
+results/qwen2/

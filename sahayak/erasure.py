@@ -30,6 +30,7 @@ demo: same request, OFF deletes one fact and the X-ray still lights up, ON leave
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 import re
 import threading
@@ -49,6 +50,10 @@ TOPICS: dict[str, str] = {
               r"papa|mummy|bhai|behen|पिता|माता|पत्नी|पति|भाई|बहन",
 }
 ALL_RE = re.compile(r"\b(everything|all|sab|sabhi|saara|sara)\b|सब", re.I)
+# Only THESE phrasings mean "the thing I just told you". A request that names a topic we don't
+# hold ("forget my shoe size") must erase NOTHING, not fall back to deleting the latest fact.
+_RECENCY_RE = re.compile(r"\b(that|it|this|last|previous|recent|earlier|just (said|told|now|gave)|"
+                         r"undo|the one i just|wo|woh|ye|yeh|abhi)\b", re.I)
 
 # Values that can be pulled out of a memory's text, per topic.
 _PHONE = r"(?<![\d०-९])(?:\+?91[\s-]?)?[6-9६-९][\d०-९]{4}[\s-]?[\d०-९]{5}(?![\d०-९])"
@@ -59,7 +64,13 @@ _PIN = r"(?<![\d०-९])[1-9][\d०-९]{5}(?![\d०-९])"
 _DATE = r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}\b"
 _NUM = r"(?<![\d०-९])[\d०-९]{4,}(?![\d०-९])"
 
-_WORD = r"[A-Za-zऀ-ॿ][A-Za-zऀ-ॿ'.]*"
+_WORD = r"[A-Za-zऀ-ॿ][A-Za-zऀ-ॿ'.\-]*"   # hyphen allowed so a spelled-out name "t-e-j-a" is one token
+_SPELLED = re.compile(r"^[A-Za-zऀ-ॿ](?:[\s.\-]+[A-Za-zऀ-ॿ])+$")  # "t-e-j-a" / "t e j a" / "T.E.J.A"
+
+
+def _despell(v: str) -> str:
+    """Collapse a spelled-out name to its joined form ("t-e-j-a" -> "teja"); leave anything else."""
+    return re.sub(r"[\s.\-]+", "", v) if _SPELLED.fullmatch(v.strip()) else v
 # "my name is Teja", "mera naam teja hai", "मेरा नाम तेजा है", "call me Teja" (any case)
 _NAME_CUES = re.compile(
     r"(?:\bname\s+is|\bname'?s|\bnaam\s+(?:hai\s+)?|\bnam\s+|नाम\s+(?:है\s+)?|\bcall\s+me|\bcalled|"
@@ -156,7 +167,8 @@ def normalize(v: str) -> str:
     v = v.translate(_DEV_DIGITS).lower().strip()
     if re.fullmatch(r"[\d\s\-.+]+", v):
         return re.sub(r"\D", "", v)
-    return re.sub(r"\s+", " ", v)
+    v = re.sub(r"\s+", " ", v)
+    return _despell(v)  # "t-e-j-a" and "teja" normalise to the same string (tombstones, dedupe)
 
 
 # A tiny Roman <-> Devanagari bridge for names (Teja <-> तेजा), so a name erased in one
@@ -223,6 +235,8 @@ def variants(value: str) -> list[str]:
     """Spellings of `value` to look for."""
     v = value.strip()
     out = {v}
+    if _SPELLED.fullmatch(v):
+        out.add(_despell(v))  # "t-e-j-a" also hunts for "teja"
     m = re.fullmatch(r"([a-z]+)-(\d{3,4})", v, re.I)
     if m:  # a code word: its digits are the secret part ("I told Raghu 7342")
         out.add(m.group(2))
@@ -246,13 +260,21 @@ def pattern(value: str) -> re.Pattern:
             body = r"[\s\-.]?".join(dig[c] for c in n)
             alts.append(rf"(?<![\d०-९]){body}(?![\d०-९])")
         else:
-            body = r"\s+".join(re.escape(w) for w in v.split())
+            words = v.split()
+            base = normalize(v)
+            if len(words) == 1 and re.fullmatch(r"[A-Za-zऀ-ॿ]{2,14}", base):
+                # allow separators between letters, so "teja" also matches "t-e-j-a" / "t e j a"
+                body = r"[\s.\-]*".join(re.escape(c) for c in base)
+            else:
+                body = r"\s+".join(re.escape(w) for w in words)
             alts.append(_BOUND_L + body + _BOUND_R)
-    return re.compile("|".join(alts), re.I)
+    return re.compile("|".join(dict.fromkeys(alts)), re.I)
 
 
 def _h(salt: bytes, s: str) -> str:
-    return hashlib.sha256(salt + normalize(s).encode()).hexdigest()
+    # keyed HMAC, not a plain salted hash: the salt is a per-store secret KEY, so without it an
+    # attacker who sees the tombstone digests cannot brute-force short values (names, 4-digit codes).
+    return hmac.new(salt, normalize(s).encode(), hashlib.sha256).hexdigest()
 
 
 # ----------------------------------------------------------------------------- resolution
@@ -286,7 +308,7 @@ def resolve(request: str, memories: list, use_llm: bool = False) -> Resolution:
         for m in memories:
             for t in TOPICS:
                 res.values += values_in(m.text, t)
-    else:  # "forget it / that": the latest thing they told us
+    elif _RECENCY_RE.search(request):  # "forget that / what I just said": the latest thing
         facts = [m for m in memories if m.btype == "personal_fact"] or list(memories)
         last = max(facts, key=lambda m: getattr(m, "created", 0), default=None)
         if last is not None:
