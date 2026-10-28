@@ -16,10 +16,14 @@ real-model items need a GPU serving the model (see `docs/RUNBOOK.md`).
 | Held-out (unseen values, Hindi poison, seed 99) | `results/reduced.json` (`g2-*-heldout-*`) | `JOBS=heldout bash scripts/bigrun2.sh` |
 | Single-seed v3 sweep on Qwen3-32B (26 Oct) | `results/final-full.jsonl`, `final-calib.jsonl`, `final-mem0.jsonl` | `bash scripts/bigrun.sh` |
 | Earlier Nemotron 3 Nano run (v2 defence) | `results/20261024-191815-full-ea8f.jsonl`, `20261024-220001-calib-8a60.jsonl`, `20261025-013701-mem0del-997a.jsonl` | `python run_experiment.py --slots 200 --sessions 0,1,5,10 --checks off,on,paranoid --attackers goal,fixed` |
-| Generality grid on real models: reference agent, LangGraph backend, Mem0 poisoning on current code, third model family | `results/g3-<model>-*.jsonl` → `results/generality.md` | `MODEL_TAG=qwen32 bash scripts/bigrun3.sh`, then `python scripts/summarise_g3.py` |
-| Public benchmark: InjecAgent, 1,054 cases × base/enhanced, 4 arms + benign twins | `results/external/injecagent-<model>.{md,json,jsonl}` | `bash scripts/fetch_injecagent.sh && python scripts/eval_injecagent.py --tag <model>` |
+| Public benchmark (§2): InjecAgent, 1,054 cases × base/enhanced, 4 arms + benign twins; attacks 33.1% / 56.7% (Qwen3-32B) and 11.1% / 10.7% (Nemotron) → 0.0% with Memory Checks; benign finished 890 → 918 and 743 → 771 | `results/external/injecagent-qwen32.{md,json,jsonl}`, `injecagent-nemotron.*` | `MODEL_TAG=qwen32 JOBS=injecagent bash scripts/bigrun3.sh` (or `bash scripts/fetch_injecagent.sh && python scripts/eval_injecagent.py --tag qwen32`) |
+| Reference agent on real models (§3): deletion / entangled 100% / 100% (Qwen3-32B) and 99% / 100% (Nemotron) → 44%; isolation 50% | `results/final-g3-{qwen32,nemotron}-refagent-{plain,governed}.jsonl` | `MODEL_TAG=qwen32 JOBS=refagent bash scripts/bigrun3.sh` |
+| LangGraph store on a real model (§4): poisoning 100%, authority impersonation 100%, delayed 84% → hold; deletion rules hold | `results/final-g3-qwen32-langgraph-{poison,leak}.jsonl` | `MODEL_TAG=qwen32 JOBS=langgraph bash scripts/bigrun3.sh` |
+| Second model family (§5): Nemotron 3 Nano, isolation / deletion / entangled 91% / 81% / 82% → chance; signed policy learned 100% | `results/final-g3-nemotron-ours-leak.jsonl` | `MODEL_TAG=nemotron JOBS=leak bash scripts/bigrun3.sh` |
+| Mem0 poisoning with checks on, after the fail-open fix (§6) | `results/final-g3-qwen32-mem0-poison-on.jsonl` | `MODEL_TAG=qwen32 JOBS=mem0poison bash scripts/bigrun3.sh` |
+| Summary tables for every generality unit | `results/generality.md` | `python scripts/summarise_g3.py` |
 
-## Deterministic, offline (RESULTS.md §2–4)
+## Deterministic, offline (RESULTS.md §3, §4, §6, §7)
 
 | Claim | Source | Reproduce |
 |---|---|---|
@@ -33,6 +37,8 @@ real-model items need a GPU serving the model (see `docs/RUNBOOK.md`).
 | Mem0 data at rest after `delete()`: 30/30 in `messages` and `history`; 0/0 with checks | `results/mem0-probe-ci.json` | `python run_mem0_probe.py --n 30` |
 | Mem0's own `history()` returns the deleted text | `mem0_min_repro.py`, `DISCLOSURE.md` | `python mem0_min_repro.py` |
 | Latency: +0.2 ms per write (ours), +0.6 ms (LangGraph), nothing measurable per read | `results/latency.md` | `python scripts/latency.py` |
+| The fail-open fix: a fork of an empty store keeps checks on (fails on the old code) | `tests/test_core.py::test_fork_of_an_empty_store_keeps_checks_on` | `pytest -k empty_store` |
+| The attacker pastes into chat when a target has no upload (no crash) | `tests/test_any_agent.py::test_attacker_falls_back_to_chat_when_target_has_no_upload` | `pytest -k falls_back` |
 | The "don't erase my name" fix and forget-intent detection | `tests/test_any_agent.py::test_forget_intent_respects_negation` | `pytest -k negation` |
 
 ## Statistics

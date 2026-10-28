@@ -1,6 +1,6 @@
 "use strict";
 const $ = (s) => document.querySelector(s);
-const MODES = [["off", "Checks off"], ["v2", "v2"], ["on", "Checks on"], ["paranoid", "Strict"]];
+const MODES = [["as-deployed", "As deployed"], ["off", "Checks off"], ["v2", "v2"], ["on", "Checks on"], ["paranoid", "Strict"]];
 const ORDER = ["isolation", "deletion", "entangled", "poisoning", "authority"];
 let DATA = null, RUN = "";
 
@@ -30,6 +30,8 @@ const API = {
   runs: () => STATIC ? getJSON(STATIC.base + "runs.json") : getJSON("/api/runs"),
   findings: (run) => STATIC ? getJSON(STATIC.base + "findings/" + encodeURIComponent(run) + ".json")
                             : getJSON("/api/findings?run=" + encodeURIComponent(run)),
+  benchmarks: () => STATIC ? getJSON(STATIC.base + "benchmarks.json").catch(() => ({benchmarks: []}))
+                           : getJSON("/api/benchmarks"),
   replay: async (run, rule, mode, sessions) => {
     if(!STATIC) return getJSON(`/api/replay?run=${encodeURIComponent(run)}&rule=${encodeURIComponent(rule)}&checks=${encodeURIComponent(mode)}&sessions=${sessions}`);
     _replayCache[run] = _replayCache[run] || await getJSON(STATIC.base + "replay/" + encodeURIComponent(run) + ".json");
@@ -44,6 +46,7 @@ async function init(){
   sel.onchange = () => load(sel.value);
   if(r.runs && r.runs.length) load(r.runs[0]);
   else $("#board").innerHTML = `<p class="empty">No results yet. Run <code>python run_experiment.py</code> and they appear here.</p>`;
+  benchmarks();
 }
 
 async function load(run){
@@ -61,7 +64,7 @@ async function load(run){
     return;
   }
   const n = rows.reduce((a, r) => a + (r.attacker !== "fixed" ? (r.n || 0) : 0), 0);
-  $("#meta").textContent = [m.sahayak_model && `Sahayak on ${m.sahayak_model}`, m.backend && `${m.backend === "mem0" ? "Mem0" : "Sahayak store"}`,
+  $("#meta").textContent = [m.sahayak_model && `model: ${m.sahayak_model}`, m.memory, m.kind,
     m.slots && `${m.slots} citizens per test`, `${n.toLocaleString()} scored guesses`,
     m.finished === false ? "still running: columns appear as each mode finishes" : ""].filter(Boolean).join(", ");
 
@@ -125,9 +128,29 @@ async function replay(rule, mode, sessions){
       <h3>Citizen ${s.slot}: attacker guessed ${s.guess === "B" ? "planted" : "not planted"}${s.correct ? ", correct" : ", wrong"}</h3>
       ${(s.transcript || []).filter(t => t.channel !== "verdict").map(t => `
         <div class="turn att"><span class="who">Attacker to ${esc(t.channel)}</span>${esc(t.message)}</div>
-        ${t.reply != null ? `<div class="turn bot"><span class="who">Sahayak</span>${esc(t.reply)}</div>` : ""}`).join("")}
+        ${t.reply != null ? `<div class="turn bot"><span class="who">${mode === "as-deployed" ? "Agent" : "Sahayak"}</span>${esc(t.reply)}</div>` : ""}`).join("")}
     </div>`).join("") : `<p>No conversations recorded for this cell.</p>`;
   sec.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+}
+
+// ---- public benchmark: Memory Checks on InjecAgent (cases we did not write; success decided by code)
+const ARMS = [["none", "No defence"], ["fence", "Data-fence only"], ["gate", "Tool-call gate only"], ["checks", "Memory Checks (full)"]];
+const rate = (x) => x ? `${(100 * x.rate).toFixed(1)}%<small>${x.succeeded}/${x.n} · CI ${(100 * x.ci[0]).toFixed(1)}–${(100 * x.ci[1]).toFixed(1)}%</small>` : "–";
+async function benchmarks(){
+  const el = $("#bench"); if(!el) return;
+  let b = [];
+  try{ b = (await API.benchmarks()).benchmarks || []; }catch(e){ b = []; }
+  if(!b.length){ el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<h2>Public benchmark: InjecAgent</h2>
+    <p>1,054 tool-injection cases from a public benchmark that we did not write. An attack counts as a success only
+    if the attacker's tool actually runs, decided by code rather than a judge model. Utility is measured on benign twins of every case.</p>` +
+    b.map(x => `<h3>${esc(x.model)}</h3><div class="wrap"><table><thead><tr><th>Defence</th><th>Attack success (base)</th>
+      <th>Attack success (enhanced)</th><th>Benign tasks finished</th><th>Benign calls wrongly held</th></tr></thead><tbody>` +
+      ARMS.filter(([k]) => x.arms[k]).map(([k, l]) => { const a = x.arms[k]; return `<tr class="${k === "checks" ? "ours" : ""}">
+        <th scope="row">${esc(l)}</th><td>${rate(a.base)}</td><td>${rate(a.enhanced)}</td>
+        <td>${a.benign ? `${a.benign.finished}/${a.benign.n}` : "–"}</td><td>${a.benign ? `${a.benign.held}/${a.benign.n}` : "–"}</td></tr>`; }).join("") +
+      `</tbody></table></div>`).join("");
 }
 
 init();

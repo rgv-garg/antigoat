@@ -21,9 +21,9 @@
   <a class="navlink" href="/" style="margin-left:auto">Open Sahayak</a>
 </header>
 <main>
-  <h1>Can an attacker tell whether Sahayak remembers something it should not?</h1>
+  <h1>Can an attacker tell what an agent's memory holds?</h1>
   <p class="lede">Each test runs two worlds that differ by one memory, chosen by a coin flip per citizen.
-    The attacker chats with Sahayak and guesses the world. Guessing gets about 50%. Doing significantly better
+    The attacker talks to the agent (Sahayak, or any agent audited over HTTP) and guesses the world. Guessing gets about 50%. Doing significantly better
     (p&nbsp;&lt;&nbsp;0.01) means the memory leaks. For the learning test the reverse holds: Sahayak must tell
     the worlds apart, or it has stopped learning.</p>
   <div class="runpick">
@@ -32,6 +32,7 @@
   </div>
   <div id="board"></div>
   <div class="why" id="why"></div>
+  <section class="bench" id="bench" hidden></section>
   <section class="replay" id="replay" hidden>
     <h2 id="rtitle"></h2>
     <p id="rsub"></p>

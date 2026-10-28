@@ -57,6 +57,12 @@ tables are in [`RESULTS.md`](RESULTS.md).
 | Poisoning with **nothing planted** (false-alarm calibration run) | Sahayak store | **100%** | chance |
 | *Must learn:* a genuine signed policy is applied | Sahayak store | 100% | **100%** (Strict mode: 52%) |
 
+- **Beyond our own app and our own attacks.** On the public **InjecAgent** benchmark (1,054 tool-injection
+  cases we did not write, success decided by code), attacks succeed **33% / 57%** (base / enhanced) on
+  Qwen3-32B and **11%** on Nemotron with no defence, and **0.0%** with Memory Checks on both, while
+  benign tasks finished go *up* (890 → 918 of 1,054). An independent LangGraph agent that is not Sahayak,
+  audited blind over HTTP, leaks deletion and entangled deletion **99–100%** on both models, passes
+  isolation (no false alarm), and holds everything once its memory goes through Memory Checks.
 - **Findings we did not plant.** After `delete()`, Mem0 2.2.1's own `history()` still returns the
   deleted text, and its message buffer re-feeds it to extraction (this extends Mem0 issue
   [#7452](https://github.com/mem0ai/mem0/issues/7452)). Fact-level deletion also leaves the value
@@ -75,8 +81,8 @@ tables are in [`RESULTS.md`](RESULTS.md).
 | Claim | How | Evidence |
 |---|---|---|
 | **Any agent** | AntiGOAT needs only what a user can do: talk, ask it to forget, come back later. Describe your agent's HTTP API in a 10-line JSON file ([`targets/`](targets)), or pass a Python function. A rule that needs a capability the agent lacks is skipped and reported, never faked. | Auditing Sahayak **over HTTP as a black box gives the same numbers as in-process** (`test_black_box_http_audit_matches_in_process`). An independent [LangGraph memory agent](examples/memory_agent.py), audited blind (deterministic run): isolation **holds**, while deletion and entangled deletion **leak 100%**. With its memory routed through Memory Checks, **all hold** (`test_reference_agent_not_sahayak_found_and_fixed`). |
-| **Any memory** | Memory Checks runs on three backends behind one interface: our store, **unmodified Mem0**, and **LangGraph's `BaseStore`**, which LangGraph and LangMem agents use (the in-memory and Postgres stores share its API). | The same guarantees hold on all three (`test_governed_memory_same_guarantees_on_every_backend`). |
-| **Any model** | It talks to any OpenAI-compatible endpoint: vLLM, NVIDIA NIM, or a hosted API. | Real runs on Qwen3-32B, Qwen3-8B and NVIDIA Nemotron 3 Nano. An offline mock model runs CI. |
+| **Any memory** | Memory Checks runs on three backends behind one interface: our store, **unmodified Mem0**, and **LangGraph's `BaseStore`**, which LangGraph and LangMem agents use (the in-memory and Postgres stores share its API). | The same guarantees hold on all three (`test_governed_memory_same_guarantees_on_every_backend`). On a real model with LangGraph underneath, document poisoning, authority impersonation and a delayed trigger leak **100% / 100% / 84%** with checks off and all hold with checks on ([`RESULTS.md`](RESULTS.md) §4). |
+| **Any model** | It talks to any OpenAI-compatible endpoint: vLLM, NVIDIA NIM, or a hosted API. | Real runs on Qwen3-32B, Qwen3-8B and NVIDIA **Nemotron 3 Nano** (two model families). On Nemotron, isolation / deletion / entangled leak **91% / 81% / 82%** with checks off and all hold with checks on ([`RESULTS.md`](RESULTS.md) §5). An offline mock model runs CI. |
 
 ## Memory Checks: the four pillars, every mechanism measured
 
@@ -105,7 +111,7 @@ tables are in [`RESULTS.md`](RESULTS.md).
 ```bash
 git clone https://github.com/rgv-garg/antigoat && cd antigoat
 pip install -r requirements.txt -r requirements-mem0.txt
-pytest -q                                   # 47 tests incl. real Mem0, LangGraph and the invariants
+pytest -q                                   # 49 tests incl. real Mem0, LangGraph and the invariants
 python scripts/governance_report.py         # the 16/16 Memory Checks table
 python run_experiment.py --slots 60 --sessions 0,1 --tag try          # a full audit (mock model)
 bash scripts/serve_web.sh                   # Sahayak + Memory X-ray at http://localhost:8100
@@ -142,8 +148,12 @@ local vLLM). [`docs/RUNBOOK.md`](docs/RUNBOOK.md) covers running on Brev GPUs.
 - **Calibrated:** with every planted bug off, the auditor sits at chance, so it raises no false alarms.
   **Held out:** unseen values, an unseen language and a frozen defence.
 - **Ablation:** switching off one check brings back exactly its leak (`python run_ablation.py`).
-- **Public benchmark:** the same library on InjecAgent, a public set of 1,054 tool-injection cases that
-  we did not write (`bash scripts/bigrun3.sh`, see [`RESULTS.md`](RESULTS.md)).
+- **Public benchmark:** the same library on InjecAgent, 1,054 tool-injection cases we did not write:
+  attack success **0.0%** (95% CI ≤ 0.4%) on both models, with no loss of benign tasks
+  ([`RESULTS.md`](RESULTS.md) §2).
+- **It audits us too.** On unmodified Mem0, AntiGOAT flagged a fail-open *in our own defence* (an empty
+  store made audit forks default to checks-off). It is fixed and pinned by a regression test that fails on
+  the old code ([`RESULTS.md`](RESULTS.md) §6).
 - **Every number traced:** [`docs/EVIDENCE.md`](docs/EVIDENCE.md) maps each claim to the file and
   command that produced it.
 
@@ -170,7 +180,7 @@ local vLLM). [`docs/RUNBOOK.md`](docs/RUNBOOK.md) covers running on Brev GPUs.
 | `targets/` | JSON descriptions of agents to audit over HTTP |
 | `web/` | the live demo: Sahayak, the Memory X-ray, the governance panel, the findings page |
 | `scripts/` | grids (`bigrun2.sh`, `bigrun3.sh`), the public benchmark, reports, serving |
-| `tests/` | 47 tests: core, any-agent, invariants |
+| `tests/` | 49 tests: core, any-agent, invariants |
 | `docs/` | [`EXPLAINER.md`](docs/EXPLAINER.md) (start here), [`MEMORY_CHECKS.md`](docs/MEMORY_CHECKS.md), [`EVIDENCE.md`](docs/EVIDENCE.md) |
 
 ## Credits

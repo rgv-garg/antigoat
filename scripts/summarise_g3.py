@@ -27,9 +27,14 @@ def main() -> None:
     out = ["# Generality grid: any agent, any memory, any model\n",
            "*From `scripts/bigrun3.sh`. Each cell: observer accuracy (50% = nothing leaks) at the worst "
            "checkpoint, Holm-corrected verdict. LEAK = significantly above chance (p_adj < 0.01).*\n"]
-    for path in sorted(glob.glob("results/*g3-*.jsonl")):
+    order = [u for u, _ in UNITS]
+
+    def _key(s: str):
+        unit = next((i for i, u in enumerate(order) if f"-{u}" in s), len(order))
+        return ("nemotron" in s, unit, s)
+    for path in sorted(glob.glob("results/*g3-*.jsonl"), key=_key):
         stem = pathlib.Path(path).stem
-        m = re.match(r"(?:\d{8}-\d{6}-)?g3-([a-z0-9_]+)-(.+?)-[0-9a-f]{4}$", stem)
+        m = re.match(r"(?:\d{8}-\d{6}-|final-)?g3-([a-z0-9_]+)-(.+?)(?:-[0-9a-f]{4})?$", stem)
         if not m:
             continue
         model, unit = m.group(1), m.group(2)

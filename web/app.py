@@ -379,8 +379,32 @@ def tts(x: TTSIn):
 
 # ---- findings / replay -------------------------------------------------------------
 MODEL_ALIASES = {"target": "Qwen3-32B-FP8", "nemotron-nano": "Nemotron 3 Nano", "mock": "offline mock model"}
-KINDS = {"calib": "false-alarm check (no planted bugs)", "mem0": "real Mem0 library", "full": "full sweep",
-         "gpu-first": "first real-model run", "first-real": "first real-model run", "mock": "wiring check"}
+# every model is served under the alias "target", so a grid run names its model in its tag (g3-<model>-...)
+MODEL_TAGS = {"qwen32": "Qwen3-32B", "qwen8": "Qwen3-8B", "nemotron": "Nemotron 3 Nano"}
+KINDS = [("refagent-plain", "as written"), ("refagent-governed", "with Memory Checks"),
+         ("poison", "poisoning suite"), ("leak", "leak rules"), ("calib", "false-alarm check (no planted bugs)"),
+         ("full", "full sweep"), ("mem0", "real Mem0 library"), ("gpu-first", "first real-model run"),
+         ("first-real", "first real-model run"), ("mock", "wiring check")]
+
+
+def _describe(stem: str, m: dict) -> tuple[str, str, str]:
+    """(model, agent/memory, kind) for a run, from its tag and metadata."""
+    tag = re.search(r"g\d-([a-z0-9]+)-", stem)
+    model = (MODEL_TAGS.get(tag.group(1)) if tag else None) \
+        or MODEL_ALIASES.get(m.get("sahayak_model"), m.get("sahayak_model")) \
+        or ("offline mock model" if "mock" in stem else "")
+    if "refagent" in stem:
+        backend = "reference agent over HTTP (not Sahayak)"
+    elif m.get("backend") == "langgraph" or "langgraph" in stem:
+        backend = "LangGraph store"
+    elif m.get("backend") == "mem0" or "mem0" in stem:
+        backend = "Mem0"
+    else:
+        backend = "Sahayak store"
+    kind = next((v for k, v in KINDS if k in stem), "")
+    if kind == "real Mem0 library" and backend == "Mem0":
+        kind = ""
+    return model, backend, kind
 
 
 def _load(path: Path) -> list[dict]:
@@ -422,9 +446,7 @@ def _label(path: Path) -> str:
     import time as _t
     m = _meta(path)
     stem = path.stem
-    model = MODEL_ALIASES.get(m.get("sahayak_model"), m.get("sahayak_model")) or ("offline mock model" if "mock" in stem else "")
-    backend = "Mem0" if (m.get("backend") == "mem0" or "mem0" in stem) else "Sahayak store"
-    kind = next((v for k, v in KINDS.items() if k in stem), "")
+    model, backend, kind = _describe(stem, m)
     when = _t.strftime("%d %b %H:%M", _t.localtime(m["started"])) if m.get("started") else stem[:13]
     parts = [p for p in (model, backend, kind) if p]
     status = "" if m.get("finished") else " (still running, or stopped early)"
@@ -436,12 +458,21 @@ def _runs() -> list[Path]:
     files = [p for p in RESULTS.glob("*.jsonl") if p.stat().st_size > 0]
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
-    def rank(p: Path) -> int:
+    # published runs in story order: the headline sweep, the real-library and false-alarm runs, then the
+    # generality grid (another agent, another memory, another model family)
+    story = ["final-full", "final-mem0", "final-calib", "final-g3-qwen32-refagent-plain",
+             "final-g3-qwen32-refagent-governed", "final-g3-qwen32-langgraph-poison",
+             "final-g3-qwen32-mem0-poison-on", "final-g3-qwen32-langgraph-leak", "final-g3-nemotron-ours-leak",
+             "final-g3-nemotron-refagent-plain", "final-g3-nemotron-refagent-governed"]
+
+    def rank(p: Path) -> tuple:
         if "mock" in p.stem:
-            return 3
+            return (3, 0)
         if not _meta(p).get("finished"):
-            return 2
-        return 0 if p.stem.startswith("final-") else 1
+            return (2, 0)
+        if p.stem.startswith("final-"):
+            return (0, story.index(p.stem) if p.stem in story else len(story))
+        return (1, 0)
     return sorted(files, key=rank)
 
 
@@ -462,10 +493,31 @@ def findings(run: str = ""):
     expect = {r: RULES[r].expect for r in RULES}
     m = _meta(path)
     meta = {k: m.get(k) for k in ("sahayak_model", "attacker_model", "backend", "seconds", "embed_model")}
-    meta["sahayak_model"] = MODEL_ALIASES.get(meta["sahayak_model"], meta["sahayak_model"])
+    meta["sahayak_model"], meta["memory"], meta["kind"] = _describe(path.stem, m)
     meta["slots"] = (m.get("config") or {}).get("slots")
     meta["finished"] = bool(m.get("finished"))
     return _clean({"run": path.stem, "rows": rows, "titles": titles, "expect": expect, "meta": meta})
+
+
+@app.get("/api/benchmarks")
+def benchmarks():
+    """Public-benchmark results (InjecAgent), one entry per model, from results/external/."""
+    import json
+    out = []
+    order = ["qwen32", "qwen8", "nemotron"]
+    files = sorted((RESULTS / "external").glob("injecagent-*.json"),
+                   key=lambda f: (order.index(f.stem[11:]) if f.stem[11:] in order else len(order), f.stem))
+    for p in files:
+        tag = p.stem.split("injecagent-", 1)[1]
+        if tag.startswith("mock"):
+            continue
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        out.append({"benchmark": d.get("benchmark", "InjecAgent"), "model": MODEL_TAGS.get(tag, tag),
+                    "arms": d.get("arms", {})})
+    return _clean({"benchmarks": out})
 
 
 @app.get("/api/replay")

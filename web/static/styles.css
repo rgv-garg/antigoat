@@ -229,6 +229,17 @@ body.report{background:var(--paper)}
 .replay .turn.att{color:#F2D9A6}
 .replay .turn.bot{color:#D4E1EA}
 .empty{color:var(--muted);padding:20px 0}
+.bench{margin-top:22px;background:#fff;border:1px solid var(--line);border-radius:var(--radius-m);padding:16px 18px}
+.bench h2{font-size:19px;margin:0 0 6px}
+.bench h3{font-size:16px;margin:16px 0 6px;color:var(--ink)}
+.bench > p{margin:0;color:var(--ink-2);max-width:80ch}
+.bench .wrap{overflow-x:auto}
+.bench table{width:100%;border-collapse:collapse;font-size:15px}
+.bench th,.bench td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.bench thead th{font-size:13px;color:var(--muted);font-weight:500}
+.bench td small{display:block;font-size:12px;color:var(--muted)}
+.bench tr.ours th,.bench tr.ours td{background:var(--safe-soft)}
+.bench tr.ours th{color:#0A5A3A}
 .shots{margin-top:28px}
 .shots h2{font-size:22px;margin:0 0 6px;font-variation-settings:"wdth" 112}
 .shots p{max-width:72ch;color:var(--ink-2);margin:0 0 12px}

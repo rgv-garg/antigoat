@@ -47,14 +47,11 @@ ALIASES = {"target": "Qwen3-32B-FP8", "nemotron-nano": "Nemotron 3 Nano"}
 
 
 def label(run: str, meta: dict) -> str:
-    model = ALIASES.get(meta.get("sahayak_model"), meta.get("sahayak_model")) or "?"
-    backend = "Mem0" if meta.get("backend") == "mem0" else "Sahayak store"
-    kind = {"full": "full sweep", "calib": "false-alarm check (no planted bugs)", "mem0": "real Mem0",
-            "gpu-first": "first real-model run"}
-    tag = next((v for k, v in kind.items() if k in run), "")
-    if model == "mock":
+    from web.app import _describe  # one labelling for the live site and the static one
+    model, backend, kind = _describe(run, meta)
+    if model in ("mock", "offline mock model"):
         return f"Offline mock model, {backend} (wiring check, not model behaviour)"
-    return f"{model}, {backend}" + (f", {tag}" if tag else "")
+    return ", ".join(x for x in (model, backend, kind) if x)
 
 
 def export_run(run: str, out: Path) -> dict:
@@ -64,7 +61,8 @@ def export_run(run: str, out: Path) -> dict:
     meta = json.loads(meta_p.read_text(encoding="utf-8")) if meta_p.exists() else {}
     m = {k: meta.get(k) for k in ("sahayak_model", "attacker_model", "backend", "seconds", "embed_model")}
     m["slots"] = (meta.get("config") or {}).get("slots")
-    m["sahayak_model"] = ALIASES.get(m.get("sahayak_model"), m.get("sahayak_model"))
+    from web.app import _describe
+    m["sahayak_model"], m["memory"], m["kind"] = _describe(run, meta)
     m["finished"] = bool(meta.get("finished"))
     findings = {"run": run, "rows": scorecard(records), "titles": {r: RULES[r].title for r in RULES},
                 "expect": {r: RULES[r].expect for r in RULES}, "meta": m}
@@ -99,12 +97,16 @@ def main() -> None:
         shutil.rmtree(data)
     runs = [r for r in a.runs.split(",") if r] or [
         f.stem for f in sorted((ROOT / "results").glob("*.jsonl")) if f.stat().st_size > 0]
-    if not a.runs:  # real-model runs first, published ones first, offline mock last (else: the order given)
-        runs.sort(key=lambda r: (0 if r.startswith("final-") else (2 if "mock" in r else 1), r))
+    if not a.runs:  # the live site's story order (published runs first, offline mock last)
+        from web.app import _runs
+        runs = [f.stem for f in _runs() if f.stem in set(runs)]
     exported = [export_run(r, data) for r in runs]
     (data / "runs.json").write_text(json.dumps({"runs": [e["id"] for e in exported],
                                                 "labels": {e["id"]: e["label"] for e in exported}},
                                                ensure_ascii=False, indent=1), encoding="utf-8")
+
+    from web.app import benchmarks  # the public-benchmark panel (InjecAgent)
+    (data / "benchmarks.json").write_text(json.dumps(benchmarks(), ensure_ascii=False, indent=1), encoding="utf-8")
 
     static = docs / "static"
     static.mkdir(parents=True, exist_ok=True)

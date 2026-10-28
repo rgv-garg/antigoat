@@ -6,8 +6,12 @@ hundreds of generated inputs are checked on every push, and any failure can be r
 """
 import os
 
-from hypothesis import settings
+try:
+    from hypothesis import settings
+except ImportError:  # hypothesis is in requirements.txt; without it only the invariant tests are skipped
+    settings = None
 
-settings.register_profile("ci", derandomize=True, print_blob=True)
-if os.environ.get("CI"):
-    settings.load_profile("ci")
+if settings is not None:
+    settings.register_profile("ci", derandomize=True, print_blob=True)
+    if os.environ.get("CI"):
+        settings.load_profile("ci")
