@@ -138,7 +138,7 @@ class Mem0Store:
     def __init__(self, checks: MemoryChecks | None = None, bugs: dict | None = None):
         from mem0 import Memory
 
-        self.checks = checks or MemoryChecks("off")
+        self.checks = checks if checks is not None else MemoryChecks("off")
         self.bugs = {}  # nothing planted: we test Mem0 as shipped
         self._dir = tempfile.mkdtemp(prefix="antigoat-mem0-")
         dims = int(embed(["x"]).shape[1])

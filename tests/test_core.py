@@ -498,3 +498,20 @@ def test_mem0_decision_gate_withholds_document_poisoning():
     assert "no longer required" in sys_off
     # ON: the action-gate withholds it, so the verifier cannot act on the poison.
     assert "no longer required" not in sys_on and "withheld by Memory Checks" in sys_on
+
+
+def test_fork_of_an_empty_store_keeps_checks_on():
+    """Regression for a fail-open AntiGOAT caught on real Mem0: every store defines __len__, so an
+    EMPTY store is falsy, and `store.checks if store else <default off>` handed audit forks fresh
+    checks-OFF. The fake notice then reached the verifier ungated (Mem0, session 0, 26/31 approved)."""
+    import pytest
+    for backend in ("ours", "mem0", "langgraph"):
+        if backend == "mem0":
+            pytest.importorskip("mem0")
+        if backend == "langgraph":
+            pytest.importorskip("langgraph")
+        parent = Sahayak("on", backend=backend)
+        assert len(parent.store) == 0                      # the dangerous case: an empty store
+        fork = parent.fork()
+        assert fork.checks is parent.checks, backend       # same checks object, not a fresh default
+        assert fork.checks.enabled, backend

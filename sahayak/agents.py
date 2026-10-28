@@ -113,7 +113,9 @@ def _mask(v: str) -> str:
 class Sahayak:
     def __init__(self, checks_mode: str = "off", bugs: dict | None = None, store: MemoryStore | None = None,
                  backend: str = "ours"):
-        self.checks = store.checks if store else MemoryChecks.from_spec(checks_mode)
+        # `is not None`, never truthiness: every store defines __len__, so an EMPTY store is falsy and
+        # `if store` would silently hand a fork fresh checks-OFF (a fail-open that AntiGOAT caught on Mem0).
+        self.checks = store.checks if store is not None else MemoryChecks.from_spec(checks_mode)
         if store is None and backend == "mem0":
             from memorychecks.mem0_store import Mem0Store  # real open-source Mem0, no planted bugs
             store = Mem0Store(self.checks)

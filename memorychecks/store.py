@@ -61,7 +61,7 @@ class Item:
 
 class MemoryStore:
     def __init__(self, checks: MemoryChecks | None = None, bugs: dict | None = None):
-        self.checks = checks or MemoryChecks("off")
+        self.checks = checks if checks is not None else MemoryChecks("off")
         self.bugs = dict(DEFAULT_BUGS if bugs is None else bugs)
         self.items: dict[int, Item] = {}
         self.receipts: list[dict] = []   # signed DPDP erasure receipts (hard_delete)
