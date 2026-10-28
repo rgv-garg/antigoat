@@ -12,7 +12,7 @@ four through one object:
     mem.write("asha", "My phone is 98765 43210.", source="user")
     mem.write("asha", web_page_text, source="web")          # kept as information, never as a rule
 
-    # load - untrusted memory reaches the model fenced off as data, never as instructions
+    # load - untrusted memory reaches the model inside a fence; nothing written in it is carried out
     ctx = mem.read("asha", user_question)
     system_prompt = BASE_PROMPT + "\n\n" + ctx.prompt
 
@@ -173,7 +173,8 @@ class GovernedMemory:
 
     def observe(self, user: str, text: str, source: str = "tool", remember: bool = False) -> str:
         """Content entering this turn from somewhere other than the user (a tool result, a web
-        page, an email). Untrusted content taints the turn. Returns it fenced, ready for the prompt."""
+        page, an email). Untrusted content marks the turn as having read it. Returns it fenced, ready
+        for the prompt."""
         src = SOURCES.get(source, "web")
         if self.checks.trust_of(src) < self.checks.trust_of("citizen"):
             self._turns.setdefault(user, {"request": "", "untrusted": []})["untrusted"].append(source)
@@ -225,7 +226,7 @@ class GovernedMemory:
             basis = [it for it in relevant if self.checks.usable_for_action(it)]
             withheld = [it for it in relevant if it not in basis]
             if basis:
-                return Decision(True, "supported by a source allowed to authorise it",
+                return Decision(True, "backed by a source allowed to authorise it",
                                 [_brief(it) for it in basis], [_brief(it) for it in withheld])
             return Decision(False, ("only untrusted memory supports this action" if withheld
                                     else "no supporting memory"), [], [_brief(it) for it in withheld])

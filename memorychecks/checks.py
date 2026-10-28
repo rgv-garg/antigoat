@@ -10,7 +10,7 @@ stored. The checks, matching the deck and the team's idea list:
   source_count  Ten copies != ten witnesses: promote a claim only when >= 2 INDEPENDENT
                 origins agree (counts distinct roots, not copies).
   lineage_trust A memory inherits the trust of its LEAST trusted parent, so poison can
-                never be "laundered" through a summary.
+                never gain trust by being summarised.
   slow_poison   One untrusted origin cannot drip many small claims toward the same
                 decision: past a threshold the whole batch is quarantined.
   hash_chain    Tamper-evident write log (each record chains the previous hash).

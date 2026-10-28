@@ -1,8 +1,8 @@
 """Memory Checks: governed memory for AI agents.
 
 Put it between any agent and its memory. Every write is labelled with where it came from and how
-far that source may be trusted; untrusted memory can inform the agent but never drive a risky
-decision; "forget X" removes X everywhere it lives, with a signed receipt; and every memory can
+far that source may be trusted; memory from an untrusted source is a claim, never an authority -
+it can be recalled, but it cannot authorise a risky decision; "forget X" removes X everywhere it lives, with a signed receipt; and every memory can
 be traced, contradicted, attributed and rolled back.
 
     from memorychecks import GovernedMemory

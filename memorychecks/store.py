@@ -56,7 +56,7 @@ class Item:
     created: int = 0
     emb: np.ndarray | None = field(default=None, compare=False, repr=False)
     meta: dict = field(default_factory=dict, compare=False)
-    trust: int = field(default=2, compare=False)  # lineage trust tier (admin 3 > citizen/agent 2 > doc 1 > web 0)
+    trust: int = field(default=2, compare=False)  # lineage trust level (admin 3 > citizen/agent 2 > doc 1 > web 0)
 
 
 class MemoryStore:

@@ -222,7 +222,7 @@ def test_lineage_trust_inherits_least_trusted_parent():
     i1 = st.add("u", "personal fact alpha-1", "citizen", "personal_fact")
     i2 = st.add("u", "unverified claim from the web 2", "web", "world_fact", meta={"origin": "web-x"})
     i3 = st.add("u", "summary of the above", "agent", "summary", parents=(i1, i2))
-    assert st.items[i3].trust == 0  # a summary can't launder web-grade trust into agent-grade
+    assert st.items[i3].trust == 0  # summarising can't lift web-grade trust to agent-grade
 
 
 def test_source_counting_promotes_only_independent_origins():

@@ -103,8 +103,8 @@ record("Poisoning", "Action gate",
        ("no longer required" in sys_off) and ("no longer required" not in sys_on),
        f"poison in verifier context: off={'yes' if 'no longer required' in sys_off else 'no'}, "
        f"on={'yes' if 'no longer required' in sys_on else 'no'}")
-record("Poisoning", "Data-fence (read gate)",
-       "untrusted memory is presented to the agent as fenced DATA, never as instructions",
+record("Poisoning", "Data-fence",
+       "retrieved memory reaches the agent inside a per-reply fence; nothing written in it is carried out",
        "withheld by Memory Checks" in sys_on,
        "retrieved record replaced with an explicit 'withheld' notice under checks")
 # never-promote: the fake notice is never a usable official policy
