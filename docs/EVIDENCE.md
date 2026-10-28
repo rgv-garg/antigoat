@@ -37,6 +37,8 @@ real-model items need a GPU serving the model (see `docs/RUNBOOK.md`).
 | Mem0 data at rest after `delete()`: 30/30 in `messages` and `history`; 0/0 with checks | `results/mem0-probe-ci.json` | `python run_mem0_probe.py --n 30` |
 | Mem0's own `history()` returns the deleted text | `mem0_min_repro.py`, `DISCLOSURE.md` | `python mem0_min_repro.py` |
 | Latency: +0.2 ms per write (ours), +0.6 ms (LangGraph), nothing measurable per read | `results/latency.md` | `python scripts/latency.py` |
+| Quantified metrics (RESULTS §7): every mechanism as a rate over 500 generated cases; auditor 11/11 detected, 0/34 false alarms | `results/metrics.md`, `results/metrics.json` | `python scripts/metrics.py` (CI: `pytest -k quantified_metrics`) |
+| A chat claim of a rule or official authority is kept as an unverified claim with checks on | `tests/test_core.py::test_chat_rule_claim_is_an_unverified_claim_only_with_checks_on` | `pytest -k rule_claim` |
 | The fail-open fix: a fork of an empty store keeps checks on (fails on the old code) | `tests/test_core.py::test_fork_of_an_empty_store_keeps_checks_on` | `pytest -k empty_store` |
 | The attacker pastes into chat when a target has no upload (no crash) | `tests/test_any_agent.py::test_attacker_falls_back_to_chat_when_target_has_no_upload` | `pytest -k falls_back` |
 | The "don't erase my name" fix and forget-intent detection | `tests/test_any_agent.py::test_forget_intent_respects_negation` | `pytest -k negation` |

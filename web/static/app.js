@@ -201,7 +201,8 @@ function renderGov(g){
       (causes.length ? `<ul class="glist">` + causes.map(c =>
         `<li><span class="tier t1">caused it</span><span class="gstat no">from ${esc(c.source)}</span>` +
         `<span class="gtext">${esc(c.text)}</span></li>`).join("") + `</ul>`
-        : `<p class="gnote">No single memory is responsible for the current decision.</p>`);
+        : (g.decision ? `<p class="gnote">No single memory is responsible for this approval.</p>`
+           : `<p class="gnote"><b>Nothing to explain yet:</b> this citizen's application is currently <b>rejected</b> (address proof required). "Why approved?" traces an <i>approval</i> back to the memory that caused it. To see it work: set Checks to <b>Off</b>, press <b>Fake notice, then apply</b> (it gets approved), then press <b>Why approved?</b> and <b>Roll back</b>.</p>`));
   } else if(g.view === "rollback"){
     el.innerHTML = `<p class="gnote">Quarantined <b>${g.quarantined}</b> memory(ies) (the cause and its derivatives). ` +
       `Decision now: <b class="${g.decision_after ? "" : "good"}">${g.decision_after ? "still approved" : "rejected — rolled back"}</b>.</p>`;
@@ -253,6 +254,8 @@ async function send(text){
       if(ev.mode === "verified-erasure") addNote(`Verified Erasure: ${ev.residue} copies left, ${ev.tombstones} fingerprint(s) kept so it cannot come back.`, "good");
       else if(ev.removed) addNote(`Deleted ${ev.removed} record(s) about the ${ev.topics.join(", ") || "detail"}. Check the X-ray for what survived.`, ev.residue ? "bad" : "");
     }
+    if(r.claim === "refused") addNote("Memory Checks: a chat message cannot change a rule. This was kept only as an unverified claim from a citizen (see Provenance: not usable), so it cannot affect any decision. Only a signed UIDAI circular can.", "good");
+    else if(r.claim === "stored") addNote("Checks off: this claim was stored like any other memory. Nothing marks it as unverified, so with checks off any memory may drive a decision (Provenance: usable).", "bad");
     render(r);
     speak(r.reply);
   }catch(e){ typing.remove(); addNote("Sahayak is not reachable. Is the server running?", "bad"); }

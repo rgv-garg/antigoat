@@ -106,6 +106,28 @@ tables are in [`RESULTS.md`](RESULTS.md).
   (memory poisoning), MITRE ATLAS, NIST AI RMF (Measure, Manage), India's DPDP Act (erasure,
   correction). The mapping is in [`docs/MEMORY_CHECKS.md`](docs/MEMORY_CHECKS.md).
 
+## Metrics: every mechanism as a measured rate
+
+Each row is a rate over **500 generated cases** (seeded, 95% Wilson interval), checks off vs on, so
+"it works" is a number rather than an example. These measure the mechanisms themselves
+(`python scripts/metrics.py`, about 6 seconds, no GPU); the real-model audit tables above measure model
+behaviour. Full table: [`results/metrics.md`](results/metrics.md).
+
+| What is measured | Checks off | Checks on |
+|---|---|---|
+| A user's search returns another user's data (planted shared-index bug underneath) | **97.4%** | **0.0%** (≤ 0.8%) |
+| A value is still recoverable after "forget" (6 written forms incl. Devanagari digits, spelled-out names, a story) | **100%** (v2: 16.6%) | **0.0%** (≤ 0.8%) |
+| A fake notice gets an application approved (5 wordings incl. Hindi) | **77.4%** | **0.0%** (≤ 0.8%) |
+| A forged-signature "circular" is accepted | | **0.0%** |
+| A genuine signed policy is applied (utility) | | **100%** |
+| Ordinary messages wrongly quarantined / mistaken for a rule claim | | **0.0% / 0.0%** |
+| Attribution finds the poison: recall / precision, incl. two redundant copies | | **100% / 100%** |
+| Rollback turns the bad approval back into a reject; benign memories caught up in it | | **100%**; **0** |
+| Contradictions: recall / precision / false flags on consistent memory | | **100% / 100% / 0.0%** |
+| Tampering with the write log detected; untampered log verifies | | **100% / 100%** |
+| Verifier fault leads to reject (fail-closed) | | **100%** |
+| **The auditor:** known failures detected / LEAK verdicts where the system should hold (published real-model runs) | | **11 of 11 / 0 of 34** |
+
 ## Quick start (laptop, no GPU, no API key, about 2 minutes)
 
 ```bash

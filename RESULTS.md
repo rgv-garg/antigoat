@@ -218,7 +218,34 @@ time, which is why only Mem0 showed it.
 This is the point of an auditor with a calibrated false-alarm rate: it flagged a fail-open in our own
 defence that our unit tests had missed.
 
-## 7. Memory Checks evidence
+## 7. Quantified metrics: each mechanism as a rate
+
+`python scripts/metrics.py` measures every Memory Checks mechanism over **500 generated cases** each
+(seed 2026, deterministic, about 6 seconds, no GPU), checks off vs on, with 95% Wilson intervals. Full
+table and notes: [`results/metrics.md`](results/metrics.md). These measure the mechanisms; the audit
+tables above measure real-model behaviour.
+
+| Area | Metric | Checks off | Checks on |
+|---|---|---|---|
+| Access control | a search returns another user's data (shared-index bug underneath) | 97.4% | **0.0%** [0.0, 0.8] |
+| Erasure | value recoverable after "forget", 6 written forms | 100% (v2: 16.6%) | **0.0%** [0.0, 0.8] |
+| Poisoning | fake notice approves an application, 5 wordings | 77.4% | **0.0%** [0.0, 0.8] |
+| Provenance | forged-signature circular accepted | | **0.0%** |
+| Provenance | rule / authority claims in chat recognised as claims | | 100% |
+| Post-incident | attribution recall / precision (1 poison; 2 redundant copies) | | **100% / 100%** (both) |
+| Post-incident | rollback flips the approval; benign memories quarantined | | **100%**; **0** |
+| Consistency | contradiction recall / precision / false flags | | **100% / 100% / 0.0%** |
+| Integrity | tampering detected (edit, delete, reorder, forge); clean log verifies | | **100% / 100%** |
+| Integrity | verifier fault → reject (fail-closed) | | **100%** |
+| Utility | genuine signed policy applied; ordinary messages wrongly quarantined; mistaken for claims | | **100%; 0.0%; 0.0%** |
+| **Auditor** | known failures detected (planted bugs, reference agent) on published real-model runs | | **11 / 11** |
+| **Auditor** | LEAK verdicts where the system should hold (defended runs, clean calibration) | | **0 / 34** |
+
+The redundant-copy attribution row is new: plain leave-one-out finds no cause when two forged copies
+back each other up (hiding either changes nothing), so attribution now falls back to sufficiency (each
+untrusted memory that alone restores the decision). Without that fallback its recall on two copies was 0.
+
+## 8. Memory Checks evidence
 
 - **16/16 mechanisms verified** across the four pillars, plus integrity, erasure and utility
   (`scripts/governance_report.py`, [`results/governance-report.md`](results/governance-report.md)).
@@ -245,7 +272,7 @@ defence that our unit tests had missed.
   `delete()`, 30 of 30 values are still in its `messages` table and 30 of 30 in `history`. With Memory
   Checks, 0 and 0.
 
-## 8. Earlier run: NVIDIA Nemotron 3 Nano, v2 defence (24–25 Oct, Brev A100)
+## 9. Earlier run: NVIDIA Nemotron 3 Nano, v2 defence (24–25 Oct, Brev A100)
 
 Before Verified Erasure and the entangled rule existed: 200 users per rule, 12,480 scored guesses.
 Checks off upheld **1 of 4** rules (isolation leaked 71%, p = 3.8e-8; deletion leaked 66%, p = 2.4e-5;

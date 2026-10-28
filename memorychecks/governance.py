@@ -67,13 +67,30 @@ def attribute(subject, user: str, decide: Callable) -> dict:
     if getattr(subject.store, "is_mem0", False):
         return {"decision": decide(subject), "caused_by": [], "note": "per-item replay needs an isolated fork"}
     base = decide(subject)
-    causes = []
-    for it in [m for m in subject.store.visible(user) if m.owner in (user, GLOBAL)]:
+    mine = [m for m in subject.store.visible(user) if m.owner in (user, GLOBAL)]
+
+    def without(ids) -> object:
         fk = subject.fork()
         with fk.store._lock:
-            fk.store.items.pop(it.id, None)
-        if decide(fk) != base:
+            for i in ids:
+                fk.store.items.pop(i, None)
+        return fk
+
+    causes = []
+    for it in mine:
+        if decide(without([it.id])) != base:
             causes.append({"id": it.id, "text": it.text[:140], "source": it.source, "status": it.status})
+    if not causes:
+        # Redundant causes (e.g. two forged copies of one notice): hiding either alone changes nothing,
+        # so plain leave-one-out finds no cause. Fall back to sufficiency: hide every untrusted memory at
+        # once; if that flips the outcome, each untrusted memory that ALONE restores it is a cause.
+        untrusted = [m for m in mine if m.source != "admin_signed"]
+        ids = [m.id for m in untrusted]
+        if ids and decide(without(ids)) != base:
+            for it in untrusted:
+                if decide(without([i for i in ids if i != it.id])) == base:
+                    causes.append({"id": it.id, "text": it.text[:140], "source": it.source,
+                                   "status": it.status, "redundant": True})
     return {"decision": base, "caused_by": causes}
 
 

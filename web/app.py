@@ -31,7 +31,7 @@ from antigoat.runner import load
 from antigoat.stats import scorecard
 from antigoat.worlds import RULES
 from config import SETTINGS
-from sahayak.agents import Sahayak, is_forget_request
+from sahayak.agents import Sahayak, is_forget_request, is_rule_claim
 from sahayak.erasure import pattern
 
 STATIC = Path(__file__).parent / "static"
@@ -216,10 +216,16 @@ def chat(x: ChatIn):
                 h += [{"role": "user", "content": said}, {"role": "assistant", "content": reply}]
             public = {k: v for k, v in ev.items() if not k.startswith("_")}
             return {"reply": reply, "agent": agent, "event": {"kind": "forget", **public}, **_state(st, user)}
+        before = len(s.checks.log)
         reply = s.chat(user, x.message, agent, history=True)
     except Exception as e:  # noqa: BLE001 - show the reason in the chat instead of a blank 500
         return JSONResponse({"error": f"model call failed: {e}"}, status_code=502)
-    return {"reply": reply, "agent": agent, **_state(st, user)}
+    out = {"reply": reply, "agent": agent, **_state(st, user)}
+    if is_rule_claim(x.message):  # someone asserted a rule or official authority in chat
+        refused = any(e.get("type") in ("policy", "instruction") and e.get("decision") in ("no", "probation")
+                      for e in s.checks.log[before:])
+        out["claim"] = "refused" if refused else "stored"
+    return out
 
 
 @app.post("/api/xray")

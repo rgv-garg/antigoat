@@ -21,3 +21,4 @@ results/qwen/
 data/external/
 .hypothesis/
 .impeccable/
+results/metrics-ci.*
