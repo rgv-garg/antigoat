@@ -1,0 +1,94 @@
+{
+ "benchmark": "AgentDojo v1.2.2",
+ "model": "target",
+ "arms": {
+  "none": {
+   "attack_cases": 948,
+   "asr": 0.07172995780590717,
+   "asr_ci": [
+    0.05697446384365898,
+    0.08994241812493747
+   ],
+   "utility_under_attack": 0.5843881856540084,
+   "benign_cases": 0,
+   "benign_utility": null,
+   "benign_utility_ci": [
+    0.0,
+    0.0
+   ],
+   "benign_calls_held": 0,
+   "benign_risky_calls": 0,
+   "errors": 1,
+   "per_suite": {
+    "banking": {
+     "asr": 0.18055555555555555,
+     "n_attack": 144,
+     "benign_utility": null,
+     "n_benign": 0
+    },
+    "slack": {
+     "asr": 0.21904761904761905,
+     "n_attack": 105,
+     "benign_utility": null,
+     "n_benign": 0
+    },
+    "travel": {
+     "asr": 0.10714285714285714,
+     "n_attack": 140,
+     "benign_utility": null,
+     "n_benign": 0
+    },
+    "workspace": {
+     "asr": 0.007155635062611807,
+     "n_attack": 559,
+     "benign_utility": null,
+     "n_benign": 0
+    }
+   }
+  },
+  "checks": {
+   "attack_cases": 946,
+   "asr": 0.003171247357293869,
+   "asr_ci": [
+    0.001079064196634479,
+    0.009282242362269658
+   ],
+   "utility_under_attack": 0.5782241014799154,
+   "benign_cases": 0,
+   "benign_utility": null,
+   "benign_utility_ci": [
+    0.0,
+    0.0
+   ],
+   "benign_calls_held": 0,
+   "benign_risky_calls": 0,
+   "errors": 3,
+   "per_suite": {
+    "banking": {
+     "asr": 0.0,
+     "n_attack": 144,
+     "benign_utility": null,
+     "n_benign": 0
+    },
+    "slack": {
+     "asr": 0.01904761904761905,
+     "n_attack": 105,
+     "benign_utility": null,
+     "n_benign": 0
+    },
+    "travel": {
+     "asr": 0.007194244604316547,
+     "n_attack": 139,
+     "benign_utility": null,
+     "n_benign": 0
+    },
+    "workspace": {
+     "asr": 0.0,
+     "n_attack": 558,
+     "benign_utility": null,
+     "n_benign": 0
+    }
+   }
+  }
+ }
+}
