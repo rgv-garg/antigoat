@@ -236,7 +236,8 @@ async function newSession(){
   render(r);
 }
 
-async function send(text){
+// spoken = the message came from the mic; only then is the reply read aloud
+async function send(text, {spoken = false} = {}){
   text = (text ?? $("#box").value).trim();
   if(!text || !sid || busy) return;
   busy = true; $("#send").disabled = true;
@@ -257,7 +258,7 @@ async function send(text){
     if(r.claim === "refused") addNote("Memory Checks: a chat message cannot change a rule. This was kept only as an unverified claim from a citizen (see Provenance: not usable), so it cannot affect any decision. Only a signed UIDAI circular can.", "good");
     else if(r.claim === "stored") addNote("Checks off: this claim was stored like any other memory. Nothing marks it as unverified, so with checks off any memory may drive a decision (Provenance: usable).", "bad");
     render(r);
-    speak(r.reply);
+    if(spoken) speak(r.reply);
   }catch(e){ typing.remove(); addNote("Sahayak is not reachable. Is the server running?", "bad"); }
   finally{ busy = false; $("#send").disabled = false; }
 }
@@ -326,7 +327,7 @@ async function toggleMic(){
       addNote("Transcribing…");
       try{
         const r = await fetch("/api/voice/stt?sid=" + sid, {method: "POST", body: fd}).then(x => x.json());
-        if(r.transcript) send(r.transcript);
+        if(r.transcript) send(r.transcript, {spoken: true});
         else addNote("Voice: " + (r.error || "no transcript"), "bad");
       }catch(e){ addNote("Voice request failed.", "bad"); }
     };
