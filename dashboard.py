@@ -264,15 +264,17 @@ with tabs[4]:
             with st.chat_message(role):
                 st.markdown(text)
         msg = st.chat_input("Type in English, Hindi or Hinglish…")
+        spoken = False  # read the reply aloud only when the citizen used the mic
         if sarvam.available():
             audio = st.audio_input("…or speak (Sarvam AI)")
             if audio is not None and st.session_state.get("last_audio") != audio.name + str(audio.size):
                 st.session_state.last_audio = audio.name + str(audio.size)
                 msg = sarvam.speech_to_text(audio.getvalue())
+                spoken = bool(msg)
         if msg:
             reply = S.chat(user, msg, agent)
             st.session_state.history += [("user", f"**{user}:** {msg}"), ("assistant", reply)]
-            if sarvam.available():
+            if spoken and sarvam.available():
                 st.audio(sarvam.text_to_speech(reply), format="audio/wav", autoplay=True)
             st.rerun()
 

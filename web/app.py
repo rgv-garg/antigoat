@@ -554,9 +554,12 @@ def _run_path(run: str):
 
 
 # ---- static pages (mounted last so /api/* wins) -----------------------------------
+NO_CACHE = {"Cache-Control": "no-cache, must-revalidate"}  # always serve the current page after an update
+
+
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers=NO_CACHE)
 
 
 @app.get("/report")
