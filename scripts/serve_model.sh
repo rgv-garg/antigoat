@@ -19,7 +19,7 @@ TP="${TP:-1}"
 exec vllm serve "$MODEL" \
   --served-model-name "$NAME" \
   --tensor-parallel-size "$TP" \
-  --max-model-len 16384 \
+  --max-model-len "${MAX_LEN:-16384}" \
   --gpu-memory-utilization "${GPU_UTIL:-0.70}" \
   --max-num-seqs 128 \
   --host 0.0.0.0 --port 8000 ${EXTRA_ARGS:-}
