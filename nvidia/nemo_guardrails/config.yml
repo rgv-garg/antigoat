@@ -1,0 +1,23 @@
+# NVIDIA NeMo Guardrails config for Sahayak (input rails).
+# Guard models are NVIDIA-hosted NIMs (build.nvidia.com), so no extra GPU is needed.
+# Main model = the Sahayak LLM served by vLLM on the demo box.
+models:
+  - type: main
+    engine: nim
+    model: target
+    parameters:
+      base_url: http://localhost:8000/v1
+  - type: content_safety
+    engine: nim
+    model: nvidia/llama-3.1-nemotron-safety-guard-8b-v3
+
+rails:
+  config:
+    jailbreak_detection:
+      nim_base_url: "https://ai.api.nvidia.com"
+      nim_server_endpoint: "/v1/security/nvidia/nemoguard-jailbreak-detect"
+      api_key_env_var: NVIDIA_API_KEY
+  input:
+    flows:
+      - jailbreak detection model
+      - content safety check input $model=content_safety
